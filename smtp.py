@@ -30,6 +30,8 @@ import imap
 import json
 import re
 from datetime import datetime, timedelta
+import server_client
+import async_reply
 error_list = queue.Queue()
 total_email_sent_count = 0
 phase_email_list = list()
@@ -161,6 +163,68 @@ class SMTP_(threading.Thread):
         finally:
             var.thread_open -= 1
 
+
+class SMTP_Centralized(SMTP_):
+    """Extended SMTP class that reports sent emails to centralized server"""
+    
+    def __init__(self, use_centralized=False, **kwargs):
+        super().__init__(**kwargs)
+        self.use_centralized = use_centralized
+    
+    def run(self):
+        global total_email_sent_count
+        try:
+            var.thread_open += 1
+            for item in self.targets:
+                if var.cancel:
+                    break
+                time.sleep(random.randint(self.delay_start, self.delay_end))
+                server = self.login()
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = utils.format_email(var.compose_email_subject, self.FIRSTFROMNAME, self.LASTFROMNAME, item['FIRSTFROMNAME'])
+                msg['From'] = formataddr((str(Header('{} {}'.format(self.FIRSTFROMNAME, self.LASTFROMNAME), 'utf-8')), self.user))
+                msg['To'] = item['EMAIL']
+                msg['Date'] = formatdate(localtime=True)
+                body = utils.format_email(var.compose_email_body, self.FIRSTFROMNAME, self.LASTFROMNAME, item['FIRSTFROMNAME'])
+                msg.attach(MIMEText(body, 'plain'))
+                server.sendmail(self.user, item['EMAIL'], msg.as_string())
+                
+                # Report to centralized server if enabled
+                if self.use_centralized:
+                    message_id = msg.get('Message-ID', '')
+                    server_client.report_email_sent(
+                        sender_email=self.user,
+                        target_email=item['EMAIL'],
+                        subject=msg['Subject'],
+                        message_id=message_id
+                    )
+                
+                # Keep original tracking for local compatibility
+                t_dict = {'subject': msg['Subject'], 'date': dateutil.parser.parse(msg['Date']).date().strftime('%d-%b-%Y'), 'EMAIL': self.user}
+                session_track[item['EMAIL']]['send_info'].append(t_dict.copy())
+                
+                total_email_sent_count += 1
+                text = '{}: {}/{}'.format(GUI.label_status.text().split(':')[0], total_email_sent_count, self.total_email_to_be_sent)
+                status_print(label_text=text)
+                label_text = text
+                match = re.match('Phase (\\d+)\\s+(\\w+)\\s*:', label_text)
+                if match:
+                    phase_number = int(match.group(1))
+                    phase_status = match.group(2).capitalize()
+                    progress_print(phase_number, total_email_sent_count * 100 / self.total_email_to_be_sent, phase_status)
+                else:
+                    print('Unable to match phase information in the label text.')
+                server.quit()
+                server.close()
+        except Exception as e:
+            error_list.put(self.name)
+            print('error at SMTP_Centralized - {} - {}'.format(self.name, e))
+            self.logger.error('Error at Sending - {} - {}'.format(self.name, e))
+            GUI.signal.s.emit('Error at Sending - {} - {}'.format(self.name, e), False)
+        finally:
+            var.thread_open -= 1
+
+
 class Reply_SMTP(SMTP_):
 
     def __init__(self, **kwargs):
@@ -240,6 +304,25 @@ def main():
     while not var.cancel:
         var.load_db()
 
+        # Initialize centralized warming client
+        text = "Connecting to warming orchestrator server..."
+        status_print(label_text=text, print_text=text, textbrowser=[text, True])
+        
+        centralized_enabled = server_client.initialize_warming_client()
+        if centralized_enabled:
+            text = "✓ Connected to centralized warming server"
+            status_print(label_text=text, print_text=text, textbrowser=[text, True])
+        else:
+            text = "⚠ Centralized server unavailable - using local mode"
+            status_print(label_text=text, print_text=text, textbrowser=[text, False])
+        
+        # Start asynchronous reply monitoring
+        text = "Starting asynchronous reply system..."
+        status_print(label_text=text, print_text=text, textbrowser=[text, True])
+        async_reply.start_async_replies(var.group)
+        text = "✓ Asynchronous replies started"
+        status_print(label_text=text, print_text=text, textbrowser=[text, True])
+
         resting_days = [str(random.randint(0, 7)), str(random.randint(0, 7))]
 
         while True:
@@ -308,6 +391,20 @@ def main():
                                                 int(item["number_of_emails"].split("-")[1])
                                             )
 
+                # Update server with phase quotas for all accounts
+                if server_client.is_centralized_mode():
+                    text = "Phase {} - Updating server quotas...".format(key)
+                    status_print(label_text=text, print_text=text, textbrowser=[text, True])
+                    
+                    for index, user in group.iterrows():
+                        result = server_client.update_phase_on_server(
+                            user['EMAIL'], 
+                            int(key), 
+                            number_of_emails
+                        )
+                        if 'error' in result:
+                            print(f"Failed to update server quota for {user['EMAIL']}: {result['error']}")
+
                 text = "Phase {} sending : 0/{}".format(
                     key, len(group) * number_of_emails)
                 status_print(label_text=text)
@@ -316,7 +413,7 @@ def main():
                 progress_print(key, 0, "Sending")
 
                 phase_email_list = []
-                sending(item, group, len(group) * number_of_emails, number_of_emails)
+                sending(item, group, len(group) * number_of_emails, number_of_emails, int(key))
                 status_print(
                     textbrowser=["Total sent - {}".format(total_email_sent_count), True])
                 status_print(
@@ -332,47 +429,15 @@ def main():
                 #     print(key1, item1["avoid"][0], type(item1["send_info"]))
                 # print(set([x for x in temp if temp.count(x) > 1]))
 
+                # Brief pause after sending phase completion
                 time.sleep(15)
 
                 if var.cancel:
                     break
 
-                text = "Phase {}: checking inbox and spam".format(key)
-                status_print(label_text=text, print_text=text,
-                             textbrowser=[text, True])
-
-                temp_q, total_email_moved = imap.main(group, session_track)
-                # for k, i in session_track.items():
-                #     print(k , i)
-
-                text = "Phase {}: checking inbox and spam - Done.\nTotal Email Moved From Spam: {}".format(
-                            key, total_email_moved)
-                status_print(label_text=text, print_text=text,
-                             textbrowser=[text, True])
-                status_print(
-                    textbrowser=["*** Phase {} collection error list ***".format(int(key)), False])
-                show_report(temp_q)
-
-                time.sleep(15)
-
-                if var.cancel:
-                    break
-
-                status_print(textbrowser=[
-                    "Total email received - {}".format(imap.total_email_to_be_replied), True])
-                text = "Phase {} Replying : 0/{}".format(
-                    key, imap.total_email_to_be_replied)
-                status_print(label_text=text)
-
-                # NEW: Progress tracking for replying phase start
-                progress_print(key, 0, "Replying")
-
-                total_email_sent_count = 0
-                var.thread_open = 0
-                reply(item, imap.total_email_to_be_replied)
-                status_print(
-                    textbrowser=["*** Phase {} replying error list ***".format(int(key)), False])
-                show_report(error_list)
+                # Note: Inbox checking and replies are now handled asynchronously
+                text = "Phase {} - Sending complete. Replies handled asynchronously.".format(key)
+                status_print(label_text=text, print_text=text, textbrowser=[text, True])
 
                 for item_t in var.group["EMAIL"].tolist():
                     session_track[item_t]["send_info"] = []
@@ -410,16 +475,31 @@ def main():
                   title="Alert", button="OK")
             break
 
+    # Stop async reply monitoring
+    async_reply.stop_async_replies()
+    
     GUI.startButton.setEnabled(True)
     GUI.cancelButton.setEnabled(False)
 
     text = "Session ended"
     status_print(label_text=text, print_text=text, textbrowser=[text, True])
 
-def sending(phase, group, total_email_to_be_sent, number_of_emails):
+def sending(phase, group, total_email_to_be_sent, number_of_emails, phase_number):
     for index, user in group.iterrows():
-        receiver_list = prepare_list(group.loc[group['EMAIL'] != user['EMAIL']].copy(), number_of_emails, session_track[user['EMAIL']]['avoid'])
-        session_track[user['EMAIL']]['avoid'] = list(set(session_track[user['EMAIL']]['avoid'] + [item['EMAIL'] for item in receiver_list]))
+        # Try centralized target selection first
+        if server_client.is_centralized_mode():
+            receiver_list = server_client.get_centralized_targets(user['EMAIL'], number_of_emails, phase_number)
+            
+            # Fallback to local if centralized fails
+            if not receiver_list:
+                print(f"Centralized targets failed for {user['EMAIL']}, falling back to local")
+                receiver_list = prepare_list(group.loc[group['EMAIL'] != user['EMAIL']].copy(), number_of_emails, session_track[user['EMAIL']]['avoid'])
+                session_track[user['EMAIL']]['avoid'] = list(set(session_track[user['EMAIL']]['avoid'] + [item['EMAIL'] for item in receiver_list]))
+        else:
+            # Use local target selection (original logic)
+            receiver_list = prepare_list(group.loc[group['EMAIL'] != user['EMAIL']].copy(), number_of_emails, session_track[user['EMAIL']]['avoid'])
+            session_track[user['EMAIL']]['avoid'] = list(set(session_track[user['EMAIL']]['avoid'] + [item['EMAIL'] for item in receiver_list]))
+        
         proxy_user = user['PROXY_USER']
         proxy_pass = user['PROXY_PASS']
         username = user['EMAIL']
@@ -437,7 +517,7 @@ def sending(phase, group, total_email_to_be_sent, number_of_emails):
             break
         while var.thread_open >= var.limit_of_thread:
             time.sleep(1)
-        SMTP_(threadID=index, name=name, proxy_host=proxy_host, proxy_port=proxy_port, proxy_user=proxy_user, proxy_pass=proxy_pass, user=username, password=password, FIRSTFROMNAME=FIRSTFROMNAME, LASTFROMNAME=LASTFROMNAME, targets=receiver_list, delay_start=phase['delay_start'], delay_end=phase['delay_end'], total_email_to_be_sent=total_email_to_be_sent).start()
+        SMTP_Centralized(threadID=index, name=name, proxy_host=proxy_host, proxy_port=proxy_port, proxy_user=proxy_user, proxy_pass=proxy_pass, user=username, password=password, FIRSTFROMNAME=FIRSTFROMNAME, LASTFROMNAME=LASTFROMNAME, targets=receiver_list, delay_start=phase['delay_start'], delay_end=phase['delay_end'], total_email_to_be_sent=total_email_to_be_sent, use_centralized=server_client.is_centralized_mode()).start()
     while var.thread_open != 0:
         time.sleep(1)
     return True
