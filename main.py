@@ -8,7 +8,7 @@ from threading import Thread
 from time import sleep
 import os
 import sys
-from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QMessageBox
+from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QMessageBox, QButtonGroup
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from gui import Ui_MainWindow
@@ -83,6 +83,16 @@ class Main:
         GUI.progress_bar_widget.setLayout(layout)
         self.time_interval_sub_check = 3600
         Thread(target=self.check_for_subscription, daemon=True).start()
+        self.mode_button_group = QButtonGroup()
+        self.mode_button_group.setExclusive(True)
+        self.mode_button_group.addButton(GUI.pushButton_canned_mode)
+        self.mode_button_group.addButton(GUI.pushButton_ai_mode)
+        GUI.pushButton_canned_mode.clicked.connect(lambda: self.set_compose_mode(False))
+        GUI.pushButton_ai_mode.clicked.connect(lambda: self.set_compose_mode(True))
+        GUI.stackedWidget.currentChanged.connect(self.handle_stack_change)
+        self.ai_mode_enabled = None
+        self.handle_stack_change(GUI.stackedWidget.currentIndex())
+        self.set_compose_mode(False)
 
     def check_for_subscription(self):
         while True:
@@ -146,6 +156,27 @@ class Main:
         var.cancel = True
         GUI.startButton.setEnabled(True)
         GUI.cancelButton.setEnabled(False)
+
+    def handle_stack_change(self, index):
+        GUI.widget_compose_mode.setVisible(index == 1)
+
+    def set_compose_mode(self, enable_ai_mode):
+        if self.ai_mode_enabled == enable_ai_mode:
+            return
+        self.ai_mode_enabled = enable_ai_mode
+        GUI.pushButton_ai_mode.blockSignals(True)
+        GUI.pushButton_canned_mode.blockSignals(True)
+        GUI.pushButton_ai_mode.setChecked(enable_ai_mode)
+        GUI.pushButton_canned_mode.setChecked(not enable_ai_mode)
+        GUI.pushButton_ai_mode.blockSignals(False)
+        GUI.pushButton_canned_mode.blockSignals(False)
+        GUI.lineEdit_subject.setReadOnly(enable_ai_mode)
+        GUI.textBrowser_body.setReadOnly(enable_ai_mode)
+        flags = Qt.TextBrowserInteraction | Qt.LinksAccessibleByKeyboard | Qt.LinksAccessibleByMouse | Qt.TextSelectableByMouse
+        if not enable_ai_mode:
+            flags |= Qt.TextEditable
+        GUI.textBrowser_body.setTextInteractionFlags(flags)
+        var.email_mode = 'ai' if enable_ai_mode else 'canned'
 
 
     # def smtp(self):
