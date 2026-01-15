@@ -25,6 +25,31 @@ spam_info = queue.Queue()
 logger = var.logging
 logger.getLogger('requests').setLevel(var.logging.WARNING)
 
+def _extract_plain_text_body(message):
+    """Return the first text/plain payload without attachments."""
+    def decode_payload(payload, charset):
+        if payload is None:
+            return ''
+        charset = charset or 'utf-8'
+        try:
+            return payload.decode(charset, errors='replace')
+        except Exception:
+            try:
+                return payload.decode('utf-8', errors='replace')
+            except Exception:
+                return payload.decode('latin-1', errors='replace')
+
+    if message.is_multipart():
+        for part in message.walk():
+            content_type = part.get_content_type()
+            disposition = (part.get('Content-Disposition') or '').lower()
+            if content_type == 'text/plain' and 'attachment' not in disposition:
+                return decode_payload(part.get_payload(decode=True), part.get_content_charset()).strip()
+        payload = message.get_payload(decode=True)
+        return decode_payload(payload, message.get_content_charset()).strip()
+    payload = message.get_payload(decode=True)
+    return decode_payload(payload, message.get_content_charset()).strip()
+
 def status_print(label_text=None, print_text=None, textbrowser=None):
     if label_text:
         GUI.label_status.setText(label_text)
@@ -122,7 +147,8 @@ class IMAP_(threading.Thread):
                         subject = email.header.make_header(email.header.decode_header(email_message['Subject']))
                         subject = str(subject)
                         msg_id = email.utils.parseaddr(email_message['Message-ID'])[1]
-                        email_q.put({'reciever': item['EMAIL'], 'sender': self.imap_user, 'subject': subject, 'msg_id': msg_id}.copy())
+                        body_text = _extract_plain_text_body(email_message)
+                        email_q.put({'reciever': item['EMAIL'], 'sender': self.imap_user, 'subject': subject, 'msg_id': msg_id, 'body': body_text}.copy())
                         total_email_to_be_replied += 1
                 except Exception as e:
                     text = 'Error at email collecting base {} ({})'.format(self.imap_user, e)
@@ -156,7 +182,11 @@ def main(group, session_track):
     total_email_to_be_replied = 0
     var.thread_open = 0
     for key, item in session_track.items():
-        user = group.loc[group['EMAIL'] == key].to_dict('records')[0]
+        records = group.loc[group['EMAIL'] == key].to_dict('records')
+        if not records:
+            logger.warning(f'IMAP main: session key {key} not found in provided group, skipping')
+            continue
+        user = records[0]
         proxy_type = socks.PROXY_TYPE_SOCKS5
         proxy_user = user['PROXY_USER']
         proxy_pass = user['PROXY_PASS']
@@ -181,6 +211,19 @@ def main(group, session_track):
         time.sleep(1)
     while not email_q.empty():
         email_info = email_q.get()
-        session_track[email_info['sender']]['reply_info'].append({'reciever': email_info['reciever'], 'subject': email_info['subject'], 'msg_id': email_info['msg_id']}.copy())
+        sender = email_info.get('sender')
+        if sender not in session_track:
+            logger.warning(f"IMAP main: sender {sender} not in session_track, initializing entry")
+            session_track[sender] = {
+                "avoid": [],
+                "send_info": [],
+                "reply_info": []
+            }
+        session_track[sender]['reply_info'].append({
+            'reciever': email_info['reciever'],
+            'subject': email_info['subject'],
+            'msg_id': email_info['msg_id'],
+            'body': email_info.get('body', '')
+        }.copy())
     print(total_email_moved, total_email_to_be_replied)
     return (error_list, total_email_moved)
