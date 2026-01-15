@@ -83,12 +83,45 @@ api = 'https://enzim.pythonanywhere.com/'
 sign_up_label = ''
 sign_in_label = ''
 signed_in = False
+email_mode = 'canned'
+ai_prompt_subject = 'AI generated outreach'
+ai_prompt_body = 'This is a predefined AI prompt. Replace with your AI-generated content.'
+openai_api_key = ''
+openai_model = 'gpt-4o-mini'
+openai_base_url = 'https://api.openai.com/v1'
+openai_timeout = 45
+ai_prompt_path = os.path.join(db_base_dir, 'PROMPT1.txt')
+ai_email_template_path = os.path.join(db_base_dir, 'EMAIL1.txt')
+ai_reply_prompt_path = os.path.join(db_base_dir, 'PROMPT2.txt')
+ai_reply_email_template_path = os.path.join(db_base_dir, 'EMAIL2.txt')
 limit_of_thread = 100
 login_email = ''
 has_cache = False
 session_track = {}
 phase_completed = '0'
 next_phase_in = ''
+
+def _mask_secret(secret):
+    if not secret:
+        return '<empty>'
+    secret = secret.strip()
+    if len(secret) <= 8:
+        return secret[0] + '***' + secret[-1]
+    return '{}***{}'.format(secret[:4], secret[-4:])
+
+def _log_ai_settings(context):
+    try:
+        masked_key = _mask_secret(openai_api_key)
+    except Exception:
+        masked_key = '<error>'
+    print('[AI CONFIG][{}] api_key={} model={} base_url={} timeout={}'.format(
+        context,
+        masked_key,
+        openai_model,
+        openai_base_url,
+        openai_timeout
+    ))
+
 
 def load_cache():
     global phase_completed
@@ -115,8 +148,37 @@ try:
     settings = data['settings']
     limit_of_thread = config['limit_of_thread']
     login_email = config['login_email']
+    openai_api_key = (config.get('openai_api_key', openai_api_key) or '').strip()
+    openai_model = config.get('openai_model', openai_model)
+    openai_base_url = config.get('openai_base_url', openai_base_url)
+    try:
+        openai_timeout = float(config.get('openai_timeout', openai_timeout))
+    except (TypeError, ValueError):
+        openai_timeout = 45
+    ai_prompt_path = config.get('ai_prompt_path', ai_prompt_path)
+    ai_email_template_path = config.get('ai_email_template_path', ai_email_template_path)
+    ai_reply_prompt_path = config.get('ai_reply_prompt_path', ai_reply_prompt_path)
+    ai_reply_email_template_path = config.get('ai_reply_email_template_path', ai_reply_email_template_path)
+    _log_ai_settings('config.json')
 except Exception as e:
     print("Exception occurred at config loading : {}".format(e))
+
+# env_api_key = os.getenv('OPENAI_API_KEY')
+# if env_api_key:
+#     openai_api_key = env_api_key.strip()
+# env_model = os.getenv('OPENAI_MODEL')
+# if env_model:
+#     openai_model = env_model.strip()
+# env_base_url = os.getenv('OPENAI_BASE_URL')
+# if env_base_url:
+#     openai_base_url = env_base_url.strip()
+# env_timeout = os.getenv('OPENAI_TIMEOUT')
+# if env_timeout:
+#     try:
+#         openai_timeout = float(env_timeout)
+#     except (TypeError, ValueError):
+#         pass
+# _log_ai_settings('env override')
 
 mail_server = {
             "gmail": {
