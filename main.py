@@ -176,6 +176,12 @@ class Main:
         if not enable_ai_mode:
             flags |= Qt.TextEditable
         GUI.textBrowser_body.setTextInteractionFlags(flags)
+        if enable_ai_mode:
+            GUI.lineEdit_subject.setStyleSheet('color: #9AA0A6;')
+            GUI.textBrowser_body.setStyleSheet('color: #9AA0A6;')
+        else:
+            GUI.lineEdit_subject.setStyleSheet('')
+            GUI.textBrowser_body.setStyleSheet('')
         var.email_mode = 'ai' if enable_ai_mode else 'canned'
 
 
