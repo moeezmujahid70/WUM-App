@@ -8,6 +8,7 @@ from email.utils import COMMASPACE, formatdate
 from email.mime.base import MIMEBase
 from email import encoders
 from pathlib import Path
+import os
 global logger
 global phase_email_list
 global error_list
@@ -24,6 +25,7 @@ import smtplib
 import csv
 import queue
 import random
+import requests
 from pyautogui import alert, password, confirm
 from main import GUI
 import imap
@@ -36,6 +38,167 @@ phase_email_list = list()
 session_track = {}
 logger = var.logging
 logger.getLogger('requests').setLevel(var.logging.WARNING)
+
+AI_TEMPLATE_PLACEHOLDER = '__WUM_GPT_BODY__'
+REPLY_TEMPLATE_PLACEHOLDER = '__WUM_GPT_REPLY_BODY__'
+REPLY_PROMPT_PLACEHOLDER = 'THE INCOMING EMAIL SHOULD BE HERE'
+REPLY_EMAIL_PLACEHOLDER = 'GPT MESSAGE OF PROMPT2 COMES HERE'
+AI_EMAIL_PLACEHOLDER = 'GPT MESSAGE COMES HERE'
+
+_prompt_template_cache = None
+_email_template_cache = None
+_reply_prompt_template_cache = None
+_reply_email_template_cache = None
+
+def _resolve_prompt_template():
+    global _prompt_template_cache
+    if _prompt_template_cache is None:
+        prompt_path = getattr(var, 'ai_prompt_path', '') or os.path.join(var.db_base_dir, 'PROMPT1.txt')
+        try:
+            _prompt_template_cache = Path(prompt_path).read_text(encoding='utf-8')
+        except Exception as exc:
+            raise RuntimeError('Unable to load AI prompt template: {}'.format(exc))
+    return _prompt_template_cache
+
+def _resolve_email_template():
+    global _email_template_cache
+    if _email_template_cache is None:
+        template_path = getattr(var, 'ai_email_template_path', '') or os.path.join(var.db_base_dir, 'EMAIL1.txt')
+        try:
+            _email_template_cache = Path(template_path).read_text(encoding='utf-8')
+        except Exception as exc:
+            raise RuntimeError('Unable to load AI email wrapper template: {}'.format(exc))
+    return _email_template_cache
+
+def _resolve_reply_prompt_template():
+    global _reply_prompt_template_cache
+    if _reply_prompt_template_cache is None:
+        prompt_path = getattr(var, 'ai_reply_prompt_path', '') or os.path.join(var.db_base_dir, 'PROMPT2.txt')
+        try:
+            _reply_prompt_template_cache = Path(prompt_path).read_text(encoding='utf-8')
+        except Exception as exc:
+            raise RuntimeError('Unable to load AI reply prompt template: {}'.format(exc))
+    return _reply_prompt_template_cache
+
+def _resolve_reply_email_template():
+    global _reply_email_template_cache
+    if _reply_email_template_cache is None:
+        template_path = getattr(var, 'ai_reply_email_template_path', '') or os.path.join(var.db_base_dir, 'EMAIL2.txt')
+        try:
+            _reply_email_template_cache = Path(template_path).read_text(encoding='utf-8')
+        except Exception as exc:
+            raise RuntimeError('Unable to load AI reply wrapper template: {}'.format(exc))
+    return _reply_email_template_cache
+
+def _render_prompt(first_name, last_name, to_name):
+    template = _resolve_prompt_template()
+    return utils.format_email(template, first_name or '', last_name or '', to_name or '')
+
+def _render_reply_prompt(incoming_email, first_name, last_name, to_name):
+    template = _resolve_reply_prompt_template()
+    prompt = utils.format_email(template, first_name or '', last_name or '', to_name or '')
+    incoming = (incoming_email or '').strip() or 'No incoming email body was provided.'
+    return prompt.replace(REPLY_PROMPT_PLACEHOLDER, incoming)
+
+def _call_openai(prompt_text, system_prompt=None):
+    api_key = getattr(var, 'openai_api_key', '')
+    if not api_key:
+        raise RuntimeError('OpenAI API key is missing. Set OPENAI_API_KEY or update config.')
+    base_url = getattr(var, 'openai_base_url', 'https://api.openai.com/v1').rstrip('/')
+    model = getattr(var, 'openai_model', 'gpt-4o-mini')
+    timeout = getattr(var, 'openai_timeout', 55.0)
+    url = f'{base_url}/chat/completions'
+    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
+    if not system_prompt:
+        system_prompt = 'You craft outreach emails. Return ONLY two parts: the first line is the email subject and the remaining lines are the body. Do not add labels or numbering.'
+    payload = {
+        'model': model,
+        'temperature': 0.8,
+        'messages': [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': prompt_text}
+        ]
+    }
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        response.raise_for_status()
+        data = response.json()
+        return data['choices'][0]['message']['content']
+    except requests.RequestException as exc:
+        status_code = getattr(getattr(exc, 'response', None), 'status_code', None)
+        response_text = getattr(getattr(exc, 'response', None), 'text', '')
+        logger.warning('OpenAI request failed (status=%s): %s | response=%s', status_code, exc, (response_text or '')[:500])
+        raise
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        logger.warning('OpenAI response parsing failed: %s', exc, exc_info=True)
+        raise RuntimeError('Unexpected response from OpenAI API')
+
+def _parse_openai_response(content, expect_subject=True):
+    cleaned = (content or '').strip('\ufeff')
+    if not cleaned:
+        raise RuntimeError('OpenAI response is empty')
+    if not expect_subject:
+        lines = cleaned.splitlines()
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        if lines and lines[0].lower().startswith('subject:'):
+            lines.pop(0)
+        if lines:
+            first = lines[0]
+            if first.lower().startswith('body:'):
+                lines[0] = first.split(':', 1)[1].strip()
+        body_text = '\n'.join(lines).strip()
+        if not body_text:
+            raise RuntimeError('OpenAI reply body missing')
+        return '', body_text
+    lines = cleaned.splitlines()
+    index = 0
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    if index >= len(lines):
+        raise RuntimeError('OpenAI response is malformed')
+    subject_line = lines[index].strip()
+    if subject_line.lower().startswith('subject:'):
+        subject_line = subject_line.split(':', 1)[1].strip()
+    body_candidates = '\n'.join(lines[index + 1:]).strip()
+    if body_candidates.lower().startswith('body:'):
+        body_candidates = body_candidates.split(':', 1)[1].strip()
+    body_text = body_candidates
+    if not body_text:
+        raise RuntimeError('Email body missing from OpenAI response')
+    subject_line = subject_line.strip() or 'Quick update'
+    return subject_line, body_text
+
+def _wrap_body_with_template(body_text, first_name, last_name, to_name):
+    template = _resolve_email_template()
+    working_template = template.replace(AI_EMAIL_PLACEHOLDER, AI_TEMPLATE_PLACEHOLDER)
+    if AI_TEMPLATE_PLACEHOLDER not in working_template:
+        working_template = '{}\n\n{}'.format(working_template, AI_TEMPLATE_PLACEHOLDER)
+    spun_body = utils.format_email(working_template, first_name or '', last_name or '', to_name or '')
+    return spun_body.replace(AI_TEMPLATE_PLACEHOLDER, body_text.strip())
+
+def _wrap_reply_body_with_template(body_text, first_name, last_name, to_name):
+    template = _resolve_reply_email_template()
+    working_template = template.replace(REPLY_EMAIL_PLACEHOLDER, REPLY_TEMPLATE_PLACEHOLDER)
+    if REPLY_TEMPLATE_PLACEHOLDER not in working_template:
+        working_template = '{}\n\n{}'.format(working_template, REPLY_TEMPLATE_PLACEHOLDER)
+    spun_body = utils.format_email(working_template, first_name or '', last_name or '', to_name or '')
+    return spun_body.replace(REPLY_TEMPLATE_PLACEHOLDER, body_text.strip())
+
+def build_ai_email_payload(first_name, last_name, to_name):
+    prompt_text = _render_prompt(first_name, last_name, to_name)
+    openai_raw = _call_openai(prompt_text)
+    subject_line, gpt_body = _parse_openai_response(openai_raw)
+    final_body = _wrap_body_with_template(gpt_body, first_name, last_name, to_name)
+    return subject_line.strip(), final_body.strip()
+
+def build_ai_reply_body(incoming_email, first_name, last_name, to_name):
+    prompt_text = _render_reply_prompt(incoming_email, first_name, last_name, to_name)
+    system_prompt = 'You craft thoughtful reply emails. Return ONLY the email body with no greeting, no signature, no emojis, and no subject line.'
+    openai_raw = _call_openai(prompt_text, system_prompt=system_prompt)
+    _, gpt_body = _parse_openai_response(openai_raw, expect_subject=False)
+    final_body = _wrap_reply_body_with_template(gpt_body, first_name, last_name, to_name)
+    return final_body.strip()
 
 def percent_boolean_gen(percent=50):
     return random.randrange(100) < percent
@@ -54,6 +217,14 @@ def progress_print(phase, progress, status):
         GUI.progress_bar.update_progress(progress)
         GUI.progress_bar.label_status = status
         GUI.progress_bar.update()
+
+def _sleep_with_cancel(total_seconds, step=0.5):
+    end_time = time.monotonic() + max(0, total_seconds)
+    while time.monotonic() < end_time:
+        if var.cancel:
+            return True
+        time.sleep(min(step, end_time - time.monotonic()))
+    return var.cancel
 
 class SMTP_(threading.Thread):
 
@@ -99,6 +270,21 @@ class SMTP_(threading.Thread):
             logger.error(f'SmtpBase error: {traceback.format_exc()}')
             raise
 
+    def _compose_subject_body(self, recipient):
+        recipient_name = ''
+        recipient_email = 'unknown'
+        if isinstance(recipient, dict):
+            recipient_name = (recipient.get('FIRSTFROMNAME') or '').strip()
+            recipient_email = recipient.get('EMAIL', recipient_email)
+        if var.email_mode == 'ai':
+            try:
+                return build_ai_email_payload(self.FIRSTFROMNAME, self.LASTFROMNAME, recipient_name)
+            except Exception as exc:
+                self.logger.error('AI email generation failed (%s -> %s): %s', self.user, recipient_email, exc)
+        subject_text = utils.format_email(var.compose_email_subject, self.FIRSTFROMNAME, self.LASTFROMNAME, recipient_name)
+        body_text = utils.format_email(var.compose_email_body, self.FIRSTFROMNAME, self.LASTFROMNAME, recipient_name)
+        return subject_text, body_text
+
     def login(self):
         for count in range(0, 3):
             try:
@@ -116,7 +302,8 @@ class SMTP_(threading.Thread):
                 break
             except Exception as e:
                 if count <= 1:
-                    time.sleep(50)
+                    if _sleep_with_cancel(50):
+                        return None
                     continue
                 raise
         return server
@@ -128,15 +315,20 @@ class SMTP_(threading.Thread):
             for item in self.targets:
                 if var.cancel:
                     break
-                time.sleep(random.randint(self.delay_start, self.delay_end))
+                if _sleep_with_cancel(random.randint(self.delay_start, self.delay_end)):
+                    break
+                if var.cancel:
+                    break
                 server = self.login()
+                if server is None or var.cancel:
+                    break
                 msg = MIMEMultipart('alternative')
-                msg['Subject'] = utils.format_email(var.compose_email_subject, self.FIRSTFROMNAME, self.LASTFROMNAME, item['FIRSTFROMNAME'])
+                subject_text, body_text = self._compose_subject_body(item)
+                msg['Subject'] = subject_text
                 msg['From'] = formataddr((str(Header('{} {}'.format(self.FIRSTFROMNAME, self.LASTFROMNAME), 'utf-8')), self.user))
                 msg['To'] = item['EMAIL']
                 msg['Date'] = formatdate(localtime=True)
-                body = utils.format_email(var.compose_email_body, self.FIRSTFROMNAME, self.LASTFROMNAME, item['FIRSTFROMNAME'])
-                msg.attach(MIMEText(body, 'plain'))
+                msg.attach(MIMEText(body_text, 'plain'))
                 server.sendmail(self.user, item['EMAIL'], msg.as_string())
                 t_dict = {'subject': msg['Subject'], 'date': dateutil.parser.parse(msg['Date']).date().strftime('%d-%b-%Y'), 'EMAIL': self.user}
                 session_track[item['EMAIL']]['send_info'].append(t_dict.copy())
@@ -171,11 +363,20 @@ class Reply_SMTP(SMTP_):
         try:
             var.thread_open += 1
             for item in self.targets:
-                reciever = var.group.loc[var.group['EMAIL'] == item['reciever']].to_dict('records')[0]
+                reciever_df = var.group.loc[var.group['EMAIL'] == item['reciever']]
+                if reciever_df.empty:
+                    self.logger.warning('Reply target %s not found in group, skipping.', item.get('reciever'))
+                    continue
+                reciever = reciever_df.to_dict('records')[0]
                 if var.cancel:
                     break
-                time.sleep(random.randint(self.delay_start, self.delay_end))
+                if _sleep_with_cancel(random.randint(self.delay_start, self.delay_end)):
+                    break
+                if var.cancel:
+                    break
                 server = self.login()
+                if server is None or var.cancel:
+                    break
                 msg = MIMEMultipart('alternative')
                 msg['Subject'] = 'RE: ' + item['subject']
                 msg['From'] = formataddr((str(Header('{} {}'.format(self.FIRSTFROMNAME, self.LASTFROMNAME), 'utf-8')), self.user))
@@ -183,10 +384,17 @@ class Reply_SMTP(SMTP_):
                 if percent_boolean_gen(30):
                     msg['X-Priority'] = '2'
                 msg['Date'] = formatdate(localtime=True)
-                body = utils.format_email(var.compose_email_body, self.FIRSTFROMNAME, self.LASTFROMNAME, reciever['FIRSTFROMNAME'])
+                reply_body = None
+                if var.email_mode == 'ai':
+                    try:
+                        reply_body = build_ai_reply_body(item.get('body', ''), self.FIRSTFROMNAME, self.LASTFROMNAME, reciever['FIRSTFROMNAME'])
+                    except Exception as exc:
+                        self.logger.error('AI reply generation failed (%s -> %s): %s', self.user, item.get('reciever'), exc)
+                if not reply_body:
+                    reply_body = utils.format_email(var.compose_email_body, self.FIRSTFROMNAME, self.LASTFROMNAME, reciever['FIRSTFROMNAME'])
                 msg.add_header('In-Reply-To', item['msg_id'])
                 msg.add_header('References', item['msg_id'])
-                msg.attach(MIMEText(body, 'plain'))
+                msg.attach(MIMEText(reply_body, 'plain'))
                 server.sendmail(self.user, item['reciever'], msg.as_string())
                 total_email_sent_count += 1
                 text = '{}: {}/{}'.format(GUI.label_status.text().split(':')[0], total_email_sent_count, self.total_email_to_be_sent)
@@ -213,7 +421,11 @@ def reply(phase, total_email_to_be_replied):
     count = 0
     for key, item in session_track.items():
         count += 1
-        user = var.group.loc[var.group['EMAIL'] == key].to_dict('records')[0]
+        user_df = var.group.loc[var.group['EMAIL'] == key]
+        if user_df.empty:
+            logger.warning('Reply session user %s missing from current group, skipping.', key)
+            continue
+        user = user_df.to_dict('records')[0]
         proxy_user = user['PROXY_USER']
         proxy_pass = user['PROXY_PASS']
         username = user['EMAIL']
@@ -230,7 +442,10 @@ def reply(phase, total_email_to_be_replied):
         if var.cancel:
             break
         while var.thread_open >= var.limit_of_thread:
-            time.sleep(1)
+            if _sleep_with_cancel(1):
+                break
+        if var.cancel:
+            break
         Reply_SMTP(threadID=count, name=name, proxy_host=proxy_host, proxy_port=proxy_port, proxy_user=proxy_user, proxy_pass=proxy_pass, user=username, password=password, FIRSTFROMNAME=FIRSTFROMNAME, LASTFROMNAME=LASTFROMNAME, targets=item['reply_info'], delay_start=phase['delay_start'], delay_end=phase['delay_end'], total_email_to_be_sent=total_email_to_be_replied).start()
     while var.thread_open != 0:
         time.sleep(1)
@@ -279,7 +494,8 @@ def main():
             else:
                 session_track = var.session_track
 
-        if len_group >= 26 and len_group % 2 == 0:
+        # if len_group >= 26 and len_group % 2 == 0:
+        if len_group > 0:
             # try:
             for key, item in var.settings.items():
 
@@ -307,6 +523,18 @@ def main():
                                                 int(item["number_of_emails"].split("-")[0]),
                                                 int(item["number_of_emails"].split("-")[1])
                                             )
+                
+
+                
+                
+                text1 = "Phase {}: Number of emails per account set to {}".format(key, number_of_emails)
+                status_print(print_text=text1, textbrowser=[text1, True])
+
+                mode_label = 'AI' if getattr(var, 'email_mode', 'canned') == 'ai' else 'Canned'
+                mode_text = "Phase {}: Mode set to {}".format(key, mode_label)
+                status_print(print_text=mode_text, textbrowser=[mode_text, True])
+
+                
 
                 text = "Phase {} sending : 0/{}".format(
                     key, len(group) * number_of_emails)
@@ -314,6 +542,15 @@ def main():
 
                 # NEW: Progress tracking for sending phase start
                 progress_print(key, 0, "Sending")
+
+                # Reinitialize session_track with all emails from group
+                for email in group["EMAIL"].tolist():
+                    if email not in session_track:
+                        session_track[email] = {
+                            "avoid": [],
+                            "send_info": [],
+                            "reply_info": []
+                        }
 
                 phase_email_list = []
                 sending(item, group, len(group) * number_of_emails, number_of_emails)
@@ -357,6 +594,8 @@ def main():
 
                 if var.cancel:
                     break
+
+
 
                 status_print(textbrowser=[
                     "Total email received - {}".format(imap.total_email_to_be_replied), True])
@@ -406,7 +645,7 @@ def main():
             # except Exception as e:
             #     print("Error at smtp.main - {}".format(e))
         else:
-            alert(text="Database should contain at least 26 emails and should be even in quantity",
+            alert(text="Database should contain at least 1 email",
                   title="Alert", button="OK")
             break
 
@@ -418,6 +657,13 @@ def main():
 
 def sending(phase, group, total_email_to_be_sent, number_of_emails):
     for index, user in group.iterrows():
+        # Initialize session_track entry if it doesn't exist
+        if user['EMAIL'] not in session_track:
+            session_track[user['EMAIL']] = {
+                "avoid": [],
+                "send_info": [],
+                "reply_info": []
+            }
         receiver_list = prepare_list(group.loc[group['EMAIL'] != user['EMAIL']].copy(), number_of_emails, session_track[user['EMAIL']]['avoid'])
         session_track[user['EMAIL']]['avoid'] = list(set(session_track[user['EMAIL']]['avoid'] + [item['EMAIL'] for item in receiver_list]))
         proxy_user = user['PROXY_USER']
@@ -436,7 +682,10 @@ def sending(phase, group, total_email_to_be_sent, number_of_emails):
         if var.cancel:
             break
         while var.thread_open >= var.limit_of_thread:
-            time.sleep(1)
+            if _sleep_with_cancel(1):
+                break
+        if var.cancel:
+            break
         SMTP_(threadID=index, name=name, proxy_host=proxy_host, proxy_port=proxy_port, proxy_user=proxy_user, proxy_pass=proxy_pass, user=username, password=password, FIRSTFROMNAME=FIRSTFROMNAME, LASTFROMNAME=LASTFROMNAME, targets=receiver_list, delay_start=phase['delay_start'], delay_end=phase['delay_end'], total_email_to_be_sent=total_email_to_be_sent).start()
     while var.thread_open != 0:
         time.sleep(1)
