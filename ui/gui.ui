@@ -463,14 +463,14 @@ QToolButton {
          <number>20</number>
         </property>
         <item>
-         <spacer name="verticalSpacer_main_top">
+            <spacer name="verticalSpacer_main_top">
           <property name="orientation">
            <enum>Qt::Vertical</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
             <width>20</width>
-            <height>70</height>
+                <height>0</height>
            </size>
           </property>
          </spacer>
@@ -707,6 +707,19 @@ QPushButton:pressed {
           </layout>
          </widget>
         </item>
+                <item>
+                 <spacer name="verticalSpacer_main_bottom">
+                    <property name="orientation">
+                     <enum>Qt::Vertical</enum>
+                    </property>
+                    <property name="sizeHint" stdset="0">
+                     <size>
+                        <width>20</width>
+                        <height>0</height>
+                     </size>
+                    </property>
+                 </spacer>
+                </item>
        </layout>
       </widget>
     <widget class="QWidget" name="stackedWidgetPage2">
@@ -921,7 +934,7 @@ QPushButton:pressed {
         <string notr="true">background-color: #eff2f8;
 </string>
        </property>
-       <layout class="QGridLayout" name="gridLayout_2">
+    <layout class="QGridLayout" name="gridLayout_2" rowstretch="1">
         <property name="leftMargin">
          <number>20</number>
         </property>
@@ -937,21 +950,14 @@ QPushButton:pressed {
         <property name="spacing">
          <number>0</number>
         </property>
-        <item row="0" column="0">
-         <spacer name="verticalSpacer_logs_top">
-          <property name="orientation">
-           <enum>Qt::Vertical</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>70</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item row="1" column="0">
-         <widget class="QTextBrowser" name="textBrowser_report">
+                <item row="0" column="0">
+                 <widget class="QTextBrowser" name="textBrowser_report">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                        <horstretch>0</horstretch>
+                        <verstretch>1</verstretch>
+                     </sizepolicy>
+                    </property>
           <property name="font">
            <font>
             <family>Times New Roman</family>

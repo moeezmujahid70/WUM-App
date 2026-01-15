@@ -125,7 +125,7 @@ class Sign_in(si.Ui_Dialog):
         set_icon(self.dialog)
         self.pushButton_sign_in.clicked.connect(self.validate)
         self.lineEdit_email.setText(var.login_email)
-        self.lineEdit_password.setText("123456789")
+        self.lineEdit_password.setText("22334455")
 
         self.timer = QtCore.QTimer()
         self.timer.setInterval(10)
