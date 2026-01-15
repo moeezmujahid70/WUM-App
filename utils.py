@@ -50,8 +50,33 @@ def prepare_html(body):
 
 def update_config_json():
     try:
-        data = {'config': {'limit_of_thread': var.limit_of_thread, 'login_email': var.login_email, 'subject': var.compose_email_subject, 'body': var.compose_email_body}, 'settings': var.settings}
-        with open(var.config_path, 'w') as json_file:
+        try:
+            with open(var.config_path, 'r', encoding='utf-8') as existing_file:
+                data = json.load(existing_file)
+        except Exception:
+            data = {'config': {}, 'settings': var.settings}
+        config = data.get('config', {})
+        config.update({
+            'limit_of_thread': var.limit_of_thread,
+            'login_email': var.login_email,
+            'subject': var.compose_email_subject,
+            'body': var.compose_email_body
+        })
+        if hasattr(var, 'openai_model'):
+            config['openai_model'] = var.openai_model
+        if hasattr(var, 'openai_base_url'):
+            config['openai_base_url'] = var.openai_base_url
+        if hasattr(var, 'openai_timeout'):
+            config['openai_timeout'] = var.openai_timeout
+        if getattr(var, 'openai_api_key', ''):
+            config['openai_api_key'] = var.openai_api_key
+        config['ai_prompt_path'] = getattr(var, 'ai_prompt_path', config.get('ai_prompt_path', ''))
+        config['ai_email_template_path'] = getattr(var, 'ai_email_template_path', config.get('ai_email_template_path', ''))
+        config['ai_reply_prompt_path'] = getattr(var, 'ai_reply_prompt_path', config.get('ai_reply_prompt_path', ''))
+        config['ai_reply_email_template_path'] = getattr(var, 'ai_reply_email_template_path', config.get('ai_reply_email_template_path', ''))
+        data['config'] = config
+        data['settings'] = var.settings
+        with open(var.config_path, 'w', encoding='utf-8') as json_file:
             json.dump(data, json_file, indent=4)
         print('config updated')
     except Exception as e:
