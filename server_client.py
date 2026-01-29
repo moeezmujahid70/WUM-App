@@ -5,7 +5,6 @@ Handles communication with the centralized email warming orchestrator
 """
 
 import requests
-import json
 import uuid
 from datetime import datetime
 import time
