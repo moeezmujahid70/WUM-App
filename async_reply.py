@@ -209,7 +209,7 @@ class AsyncReplyManager:
                 FIRSTFROMNAME=FIRSTFROMNAME,
                 LASTFROMNAME=LASTFROMNAME,
                 targets=reply_targets,
-                delay_start=60,    # Short delay for replies
+                delay_start=60,    # Reply delay range in seconds (60–300)
                 delay_end=300,
                 total_email_to_be_sent=1
             )
