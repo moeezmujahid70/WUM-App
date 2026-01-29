@@ -6,7 +6,6 @@ Handles communication with the centralized email warming orchestrator
 
 import requests
 import uuid
-from datetime import datetime
 import time
 from typing import List, Dict, Optional
 import var
