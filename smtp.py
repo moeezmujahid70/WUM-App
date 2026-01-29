@@ -485,6 +485,13 @@ def main():
     status_print(label_text=text, print_text=text, textbrowser=[text, True])
 
 def sending(phase, group, total_email_to_be_sent, number_of_emails, phase_number):
+    # Validate and normalize phase_number to a positive integer
+    try:
+        phase_number = int(phase_number)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid phase_number value: {phase_number!r}. Expected a positive integer.")
+    if phase_number <= 0:
+        raise ValueError(f"Invalid phase_number value: {phase_number}. Expected a positive integer.")
     for index, user in group.iterrows():
         # Try centralized target selection first
         if server_client.is_centralized_mode():
