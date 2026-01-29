@@ -109,7 +109,7 @@ class AsyncReplyManager:
                 # In centralized mode, we look for any emails that could be replies
                 # rather than specific ones we sent
                 mock_session_track[email]["send_info"] = [
-                    {"EMAIL": email, "subject": "Any", "date": "Any"}
+                    {"EMAIL": email, "subject": None, "date": None}
                 ]
             
             # Use existing IMAP logic but in async mode
