@@ -528,9 +528,12 @@ QToolButton {
              <property name="minimumSize">
               <size>
                <width>200</width>
-               <height>0</height>
+                             <height>380</height>
               </size>
              </property>
+                         <property name="verticalScrollBarPolicy">
+                            <enum>Qt::ScrollBarAlwaysOff</enum>
+                         </property>
              <property name="font">
               <font>
                <family>Times New Roman</family>
@@ -607,6 +610,19 @@ QScrollBar:vertical {
           </layout>
          </widget>
         </item>
+                <item>
+                 <spacer name="verticalSpacer_main_mid">
+                    <property name="orientation">
+                     <enum>Qt::Vertical</enum>
+                    </property>
+                    <property name="sizeHint" stdset="0">
+                     <size>
+                        <width>20</width>
+                        <height>0</height>
+                     </size>
+                    </property>
+                 </spacer>
+                </item>
         <item>
          <widget class="QWidget" name="widget">
           <layout class="QHBoxLayout" name="horizontalLayout">
@@ -707,19 +723,6 @@ QPushButton:pressed {
           </layout>
          </widget>
         </item>
-                <item>
-                 <spacer name="verticalSpacer_main_bottom">
-                    <property name="orientation">
-                     <enum>Qt::Vertical</enum>
-                    </property>
-                    <property name="sizeHint" stdset="0">
-                     <size>
-                        <width>20</width>
-                        <height>0</height>
-                     </size>
-                    </property>
-                 </spacer>
-                </item>
        </layout>
       </widget>
     <widget class="QWidget" name="stackedWidgetPage2">
