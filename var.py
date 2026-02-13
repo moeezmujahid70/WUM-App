@@ -75,8 +75,13 @@ try:
         os.mkdir(db_base_dir)
 except Exception as e:
     print('{} Folder not found or creation failed - {}'.format(db_base_dir, e))
-# Create and configure logger    
-logging.basicConfig(filename=logs_dir + '/wum.log', format='%(asctime)s %(message)s', filemode='a')
+# Create and configure logger
+logging.basicConfig(
+    filename=logs_dir + '/wum.log',
+    format='%(asctime)s %(message)s',
+    filemode='a',
+    level=logging.INFO
+)
 logging.getLogger('requests').setLevel(logging.WARNING)
 api = 'https://enzim.pythonanywhere.com/'
 # api = "http://127.0.0.1:5000/"

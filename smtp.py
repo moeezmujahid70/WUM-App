@@ -39,6 +39,7 @@ session_track = {}
 logger = var.logging
 logger.getLogger('requests').setLevel(var.logging.WARNING)
 
+
 AI_TEMPLATE_PLACEHOLDER = '__WUM_GPT_BODY__'
 REPLY_TEMPLATE_PLACEHOLDER = '__WUM_GPT_REPLY_BODY__'
 REPLY_PROMPT_PLACEHOLDER = 'THE INCOMING EMAIL SHOULD BE HERE'
@@ -211,6 +212,19 @@ def status_print(label_text=None, print_text=None, textbrowser=None):
     if textbrowser:
         GUI.signal.s.emit(textbrowser[0], textbrowser[1])
 
+def _normalize_subject(subject, allow_reply_prefix=False):
+    cleaned = (subject or '').strip()
+    if allow_reply_prefix:
+        return cleaned
+    cleaned = re.sub(r'^(?:\s*(?:re|fw|fwd)\s*[:\-\uFF1A]+\s*)+', '', cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
+
+def log_email_activity(action, sender, recipient, subject='', phase_label=None):
+    mode_label = 'AI' if getattr(var, 'email_mode', 'canned') == 'ai' else 'Canned'
+    phase_text = (phase_label or '').strip()
+    logger.info('Email %s | mode=%s | phase=%s | from=%s | to=%s | subject=%s',
+                action, mode_label, phase_text, sender, recipient, subject)
+
 def progress_print(phase, progress, status):
     if hasattr(GUI, 'progress_bar'):
         GUI.progress_bar.phase = phase
@@ -283,7 +297,7 @@ class SMTP_(threading.Thread):
                 self.logger.error('AI email generation failed (%s -> %s): %s', self.user, recipient_email, exc)
         subject_text = utils.format_email(var.compose_email_subject, self.FIRSTFROMNAME, self.LASTFROMNAME, recipient_name)
         body_text = utils.format_email(var.compose_email_body, self.FIRSTFROMNAME, self.LASTFROMNAME, recipient_name)
-        return subject_text, body_text
+        return _normalize_subject(subject_text, allow_reply_prefix=False), body_text
 
     def login(self):
         for count in range(0, 3):
@@ -324,12 +338,13 @@ class SMTP_(threading.Thread):
                     break
                 msg = MIMEMultipart('alternative')
                 subject_text, body_text = self._compose_subject_body(item)
-                msg['Subject'] = subject_text
+                msg['Subject'] = _normalize_subject(subject_text, allow_reply_prefix=False)
                 msg['From'] = formataddr((str(Header('{} {}'.format(self.FIRSTFROMNAME, self.LASTFROMNAME), 'utf-8')), self.user))
                 msg['To'] = item['EMAIL']
                 msg['Date'] = formatdate(localtime=True)
                 msg.attach(MIMEText(body_text, 'plain'))
                 server.sendmail(self.user, item['EMAIL'], msg.as_string())
+                log_email_activity('sent', self.user, item.get('EMAIL', ''), msg.get('Subject', ''), GUI.label_status.text())
                 t_dict = {'subject': msg['Subject'], 'date': dateutil.parser.parse(msg['Date']).date().strftime('%d-%b-%Y'), 'EMAIL': self.user}
                 session_track[item['EMAIL']]['send_info'].append(t_dict.copy())
                 total_email_sent_count += 1
@@ -396,6 +411,7 @@ class Reply_SMTP(SMTP_):
                 msg.add_header('References', item['msg_id'])
                 msg.attach(MIMEText(reply_body, 'plain'))
                 server.sendmail(self.user, item['reciever'], msg.as_string())
+                log_email_activity('replied', self.user, item.get('reciever', ''), msg.get('Subject', ''), GUI.label_status.text())
                 total_email_sent_count += 1
                 text = '{}: {}/{}'.format(GUI.label_status.text().split(':')[0], total_email_sent_count, self.total_email_to_be_sent)
                 status_print(label_text=text)
