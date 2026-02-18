@@ -135,3 +135,6 @@ dmypy.json
 wenv/
 database/
 wum_config/config.json
+
+.Ds_Store
+.Ds_store/
