@@ -2,7 +2,8 @@
 from PyInstaller.utils.hooks import copy_metadata, collect_data_files
 import os
 
-spec_dir = os.path.abspath(os.path.dirname(__file__))
+_spec_file = globals().get('__file__')
+spec_dir = os.path.abspath(os.path.dirname(_spec_file)) if _spec_file else os.path.abspath(os.getcwd())
 icons_path = os.path.join(spec_dir, 'icons')
 
 
