@@ -18,6 +18,9 @@ easyprocess = "*"
 beautifulsoup4 = "*"
 pywin32 = "*"
 pysocks = "*"
+apscheduler = "*"
+textblob = "*"
+tzdata = "*"
 
 [dev-packages]
 
