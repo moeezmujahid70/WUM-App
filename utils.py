@@ -3,7 +3,8 @@ import var
 import random
 import json
 import spintax
-from pyautogui import alert, password, confirm
+from compat_ui import alert, password, confirm
+
 
 def prepare_html(body):
     # print(body)
@@ -48,6 +49,7 @@ def prepare_html(body):
 
     return html
 
+
 def update_config_json():
     try:
         try:
@@ -57,6 +59,7 @@ def update_config_json():
             data = {'config': {}, 'settings': var.settings}
         config = data.get('config', {})
         config.update({
+            'api': var.api,
             'limit_of_thread': var.limit_of_thread,
             'login_email': var.login_email,
             'subject': var.compose_email_subject,
@@ -70,10 +73,14 @@ def update_config_json():
             config['openai_timeout'] = var.openai_timeout
         if getattr(var, 'openai_api_key', ''):
             config['openai_api_key'] = var.openai_api_key
-        config['ai_prompt_path'] = getattr(var, 'ai_prompt_path', config.get('ai_prompt_path', ''))
-        config['ai_email_template_path'] = getattr(var, 'ai_email_template_path', config.get('ai_email_template_path', ''))
-        config['ai_reply_prompt_path'] = getattr(var, 'ai_reply_prompt_path', config.get('ai_reply_prompt_path', ''))
-        config['ai_reply_email_template_path'] = getattr(var, 'ai_reply_email_template_path', config.get('ai_reply_email_template_path', ''))
+        config['ai_prompt_path'] = getattr(
+            var, 'ai_prompt_path', config.get('ai_prompt_path', ''))
+        config['ai_email_template_path'] = getattr(
+            var, 'ai_email_template_path', config.get('ai_email_template_path', ''))
+        config['ai_reply_prompt_path'] = getattr(
+            var, 'ai_reply_prompt_path', config.get('ai_reply_prompt_path', ''))
+        config['ai_reply_email_template_path'] = getattr(
+            var, 'ai_reply_email_template_path', config.get('ai_reply_email_template_path', ''))
         data['config'] = config
         data['settings'] = var.settings
         with open(var.config_path, 'w', encoding='utf-8') as json_file:
@@ -81,19 +88,21 @@ def update_config_json():
         print('config updated')
     except Exception as e:
         print('Exception occurred at update_config_json : {}'.format(e))
-        alert(text='Exception occurred at update_config_json : {}'.format(e), title='Alert', button='OK')
+
 
 def format_email(text, FIRSTFROMNAME, LASTFROMNAME, TONAME):
     text = text.replace('[FIRSTFROMNAME]', str(FIRSTFROMNAME))
     text = text.replace('[LASTFROMNAME]', str(LASTFROMNAME))
     text = text.replace('[TONAME]', str(TONAME))
-    spintax_bracket = re.compile('(?<!\\\\)((?:\\\\{2})*)\\{([^{}]+)(?<!\\\\)((?:\\\\{2})*)\\}')
+    spintax_bracket = re.compile(
+        '(?<!\\\\)((?:\\\\{2})*)\\{([^{}]+)(?<!\\\\)((?:\\\\{2})*)\\}')
     used_sentences = set()
 
     def _replace_spintax(match):
         prefix, options, suffix = match.groups()
         options_list = options.split('|')
-        available_options = [option for option in options_list if option not in used_sentences]
+        available_options = [
+            option for option in options_list if option not in used_sentences]
         if available_options:
             chosen_option = random.choice(available_options)
             used_sentences.add(chosen_option)
@@ -107,5 +116,7 @@ def format_email(text, FIRSTFROMNAME, LASTFROMNAME, TONAME):
     text = re.sub('\\\\([{}|])', '\\1', text)
     text = re.sub('\\\\{2}', '\\\\', text)
     return text
+
+
 if __name__ == '__main__':
     print(__name__)

@@ -1,22 +1,33 @@
+from dateutil import parser
+import logging
+from queue import LifoQueue
+from collections import deque
+import queue
+import pandas as pd
+import uuid
+import tempfile
+import threading
+import sys
+import os
 from json import load, dumps
-from pyautogui import alert, password, confirm
+from compat_ui import alert, password, confirm
 global compose_email_body
 global next_phase_in
 global compose_email_subject
 global session_track
 global has_cache
 global phase_completed
-import os
-import sys
-import pandas as pd
-import queue
-from collections import deque
-from queue import LifoQueue
-from win32event import CreateMutex
-from win32api import CloseHandle, GetLastError
-from winerror import ERROR_ALREADY_EXISTS
-import logging
-from dateutil import parser
+
+try:
+    import fcntl as _fcntl
+except ImportError:
+    _fcntl = None
+
+try:
+    import msvcrt as _msvcrt
+except ImportError:
+    _msvcrt = None
+
 
 def override_where():
     """ overrides certifi.core.where to return actual location of cacert.pem"""
@@ -42,21 +53,60 @@ if hasattr(sys, "frozen"):
 else:
     import requests
 
+
 class SingleInstance:
     """ Limits application to single instance """
 
     def __init__(self):
-        self.mutexname = 'testmutex_{D0E858DF-985E-4907-B7FB-8D732C3FC3B90}'
-        self.mutex = CreateMutex(None, False, self.mutexname)
-        self.lasterror = GetLastError()
+        self.lock_name = 'wum_single_instance.lock'
+        self.lock_path = os.path.join(tempfile.gettempdir(), self.lock_name)
+        self.lock_file = None
+        self._already_running = False
+        self._lock_kind = None
+
+        try:
+            self.lock_file = open(self.lock_path, 'w')
+            if os.name == 'nt' and _msvcrt is not None:
+                _msvcrt.locking(self.lock_file.fileno(), _msvcrt.LK_NBLCK, 1)
+                self._lock_kind = 'msvcrt'
+            elif _fcntl is not None:
+                _fcntl.flock(self.lock_file.fileno(),
+                             _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                self._lock_kind = 'fcntl'
+            else:
+                self._already_running = False
+        except OSError:
+            self._already_running = True
 
     def already_running(self):
-        return self.lasterror == ERROR_ALREADY_EXISTS
+        return self._already_running
 
     def __del__(self):
-        if self.mutex:
-            CloseHandle(self.mutex)
-version = '1.1r'
+        if not self.lock_file:
+            return
+        try:
+            if self._lock_kind == 'msvcrt' and _msvcrt is not None:
+                self.lock_file.seek(0)
+                _msvcrt.locking(self.lock_file.fileno(), _msvcrt.LK_UNLCK, 1)
+            elif self._lock_kind == 'fcntl' and _fcntl is not None:
+                _fcntl.flock(self.lock_file.fileno(), _fcntl.LOCK_UN)
+        except OSError:
+            pass
+        except Exception:
+            pass
+        finally:
+            try:
+                self.lock_file.close()
+            except Exception:
+                pass
+            if not self._already_running:
+                try:
+                    os.remove(self.lock_path)
+                except OSError:
+                    pass
+
+
+version = '2.2r'
 logs_dir = 'logs'
 db_base_dir = 'database'
 cancel = False
@@ -83,7 +133,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 logging.getLogger('requests').setLevel(logging.WARNING)
-api = 'https://enzim.pythonanywhere.com/'
+api = ''
 # api = "http://127.0.0.1:5000/"
 sign_up_label = ''
 sign_in_label = ''
@@ -101,10 +151,14 @@ ai_reply_prompt_path = os.path.join(db_base_dir, 'PROMPT2.txt')
 ai_reply_email_template_path = os.path.join(db_base_dir, 'EMAIL2.txt')
 limit_of_thread = 100
 login_email = ''
+gmonster_desktop_id = '6296d839-9b35-4c12-830a-6c871affc3e2'
 has_cache = False
+cache_choice_made = False
+resume_cached_run = False
 session_track = {}
 phase_completed = '0'
 next_phase_in = ''
+
 
 def _mask_secret(secret):
     if not secret:
@@ -113,6 +167,7 @@ def _mask_secret(secret):
     if len(secret) <= 8:
         return secret[0] + '***' + secret[-1]
     return '{}***{}'.format(secret[:4], secret[-4:])
+
 
 def _log_ai_settings(context):
     try:
@@ -126,6 +181,24 @@ def _log_ai_settings(context):
         openai_base_url,
         openai_timeout
     ))
+
+
+def _normalize_config_path(path_value, default_path):
+    path_text = (path_value or default_path or '').strip()
+    if not path_text:
+        return default_path
+    normalized = os.path.normpath(
+        path_text.replace('\\', os.sep).replace('/', os.sep))
+    return normalized
+
+
+def _normalize_api_base(url_value, default_url):
+    url_text = (url_value or default_url or '').strip()
+    if not url_text:
+        url_text = default_url
+    if url_text and not url_text.endswith('/'):
+        url_text += '/'
+    return url_text
 
 
 def load_cache():
@@ -145,25 +218,33 @@ def load_cache():
         next_phase_in = parser.parse(data['next_phase_in'])
     except Exception as e:
         print('Exception occurred at cache loading : {}'.format(e))
+
+
 config_path = 'wum_config/config.json'
 try:
     with open(config_path, encoding='utf-8') as json_file:
         data = load(json_file)
     config = data['config']
     settings = data['settings']
+    api = _normalize_api_base(config.get('api', api), api)
     limit_of_thread = config['limit_of_thread']
     login_email = config['login_email']
-    openai_api_key = (config.get('openai_api_key', openai_api_key) or '').strip()
+    openai_api_key = (config.get('openai_api_key',
+                      openai_api_key) or '').strip()
     openai_model = config.get('openai_model', openai_model)
     openai_base_url = config.get('openai_base_url', openai_base_url)
     try:
         openai_timeout = float(config.get('openai_timeout', openai_timeout))
     except (TypeError, ValueError):
         openai_timeout = 45
-    ai_prompt_path = config.get('ai_prompt_path', ai_prompt_path)
-    ai_email_template_path = config.get('ai_email_template_path', ai_email_template_path)
-    ai_reply_prompt_path = config.get('ai_reply_prompt_path', ai_reply_prompt_path)
-    ai_reply_email_template_path = config.get('ai_reply_email_template_path', ai_reply_email_template_path)
+    ai_prompt_path = _normalize_config_path(
+        config.get('ai_prompt_path', ai_prompt_path), ai_prompt_path)
+    ai_email_template_path = _normalize_config_path(
+        config.get('ai_email_template_path', ai_email_template_path), ai_email_template_path)
+    ai_reply_prompt_path = _normalize_config_path(
+        config.get('ai_reply_prompt_path', ai_reply_prompt_path), ai_reply_prompt_path)
+    ai_reply_email_template_path = _normalize_config_path(
+        config.get('ai_reply_email_template_path', ai_reply_email_template_path), ai_reply_email_template_path)
     _log_ai_settings('config.json')
 except Exception as e:
     print("Exception occurred at config loading : {}".format(e))
@@ -186,39 +267,42 @@ except Exception as e:
 # _log_ai_settings('env override')
 
 mail_server = {
-            "gmail": {
-                "imap": {
-                    "server": "imap.gmail.com",
-                    "port": 993
-                },
-                "smtp": {
-                    "server": "smtp.gmail.com",
-                    "port": 587,
-                    "require_ssl": False
-                }
-            },
-            "outlook": {
-                "imap": {
-                    "server": "outlook.office365.com",
-                    "port": 993
-                },
-                "smtp": {
-                    "server": "smtp.office365.com",
-                    "port": 587,
-                    "require_ssl": False
-                }
-            }
+    "gmail": {
+        "imap": {
+            "server": "imap.gmail.com",
+            "port": 993
+        },
+        "smtp": {
+            "server": "smtp.gmail.com",
+            "port": 587,
+            "require_ssl": False
         }
+    },
+    "outlook": {
+        "imap": {
+            "server": "outlook.office365.com",
+            "port": 993
+        },
+        "smtp": {
+            "server": "smtp.office365.com",
+            "port": 587,
+            "require_ssl": False
+        }
+    }
+}
 
 try:
     with open(f'{db_base_dir}/gmonster_config.json', encoding='utf-8') as json_file:
         data = load(json_file)
     config = data['config']
     mail_server = config['mail_server']
+    gmonster_desktop_id = str(config.get(
+        'desktop_id', gmonster_desktop_id)).strip() or gmonster_desktop_id
 except Exception as e:
     print('Exception occurred at config loading : {}'.format(e))
 compose_email_body = 'This is sample body text'
 compose_email_subject = 'This is sample subject'
+
 
 def compose_loading():
     global compose_email_subject
@@ -230,7 +314,10 @@ def compose_loading():
             compose_email_body = f.read().strip()
     except Exception as e:
         print('Exception occurred at subject/body loading : {}'.format(e))
+
+
 compose_loading()
+
 
 def compose_saving():
     try:
@@ -241,11 +328,14 @@ def compose_saving():
     except Exception as e:
         print('Exception occurred at subject/body loading : {}'.format(e))
 
+
 def load_db(parent=None):
     global group
     try:
-        group_a = pd.read_excel(f'{db_base_dir}/group_a.xlsx', engine='openpyxl')
-        group_b = pd.read_excel(f'{db_base_dir}/group_b.xlsx', engine='openpyxl')
+        group_a = pd.read_excel(
+            f'{db_base_dir}/group_a.xlsx', engine='openpyxl')
+        group_b = pd.read_excel(
+            f'{db_base_dir}/group_b.xlsx', engine='openpyxl')
         group = [group_a, group_b]
         group = pd.concat(group)
         group = group.reset_index(drop=True)
@@ -256,18 +346,29 @@ def load_db(parent=None):
         group = group.drop_duplicates(subset='EMAIL')
         len_group_final = len(group)
         if len_group_final != len_group_initial:
-            alert(text='Found {} duplicates in database file'.format(len_group_initial - len_group_final), title='Alert', button='OK')
+            duplicate_message = 'Found {} duplicates in database file'.format(
+                len_group_initial - len_group_final)
+            if parent == 'dialog' or threading.current_thread() is not threading.main_thread():
+                print(duplicate_message)
+            else:
+                alert(text=duplicate_message, title='Alert', button='OK')
         print(group.head(5))
         if parent == 'var':
             print('Database loaded')
         elif parent == 'dialog':
             print('DB loaded')
         else:
-            alert(text='Database Loaded', title='Alert', button='OK')
+            if threading.current_thread() is threading.main_thread():
+                alert(text='Database Loaded', title='Alert', button='OK')
+            else:
+                print('Database loaded')
     except Exception as e:
         print("Exception occurred at db loading : {}".format(e))
-        alert(text="Exception occurred at db loading : {}".format(
-            e), title='Alert', button='OK')
+        error_message = "Exception occurred at db loading : {}".format(e)
+        if parent == 'dialog' or threading.current_thread() is not threading.main_thread():
+            print(error_message)
+        else:
+            alert(text=error_message, title='Alert', button='OK')
 
 
 if __name__ == "__main__":
@@ -282,7 +383,8 @@ if __name__ == "__main__":
     is_testing_environment = 0
     try:
         if os.getenv('fa414ce5-05d1-45e2-ba53-df760ad35fa0'):
-            is_testing_environment = int(os.getenv('fa414ce5-05d1-45e2-ba53-df760ad35fa0'))
+            is_testing_environment = int(
+                os.getenv('fa414ce5-05d1-45e2-ba53-df760ad35fa0'))
     except:
         pass
     if is_testing_environment:
