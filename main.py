@@ -1,24 +1,28 @@
+from PyQt5.QtCore import Qt, QTimer, QRectF
+from PyQt5.QtGui import QPainter, QPen, QFont, QColor
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
+import requests
+import subprocess
+import webbrowser
+import pandas as pd
+import encodings.idna
+import traceback
+from gui import Ui_MainWindow
+from PyQt5.QtCore import Qt, pyqtSignal, QObject
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QMessageBox, QButtonGroup
+import sys
+import os
+from time import sleep
+from threading import Thread
+import json
+from compat_ui import alert, password, confirm
+import datetime
 global app
 global GUI
 global mainWindow
-import datetime
-from pyautogui import alert, password, confirm
-import json
-from threading import Thread
-from time import sleep
-import os
-import sys
-from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QMessageBox, QButtonGroup
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from gui import Ui_MainWindow
-import traceback
-import encodings.idna
-import pandas as pd
-import webbrowser
-import subprocess
-import requests
 print('App started....')
+
 
 class StatusModel(QtCore.QAbstractListModel):
 
@@ -45,6 +49,7 @@ class StatusModel(QtCore.QAbstractListModel):
     def rowCount(self, index):
         return len(self.status)
 
+
 class MyGui(Ui_MainWindow, QtWidgets.QWidget):
 
     def __init__(self, mainWindow):
@@ -52,8 +57,10 @@ class MyGui(Ui_MainWindow, QtWidgets.QWidget):
         QtWidgets.QWidget.__init__(self)
         self.setupUi(mainWindow)
 
+
 class Report(QObject):
     s = pyqtSignal(str, int)
+
 
 class Main:
 
@@ -87,17 +94,32 @@ class Main:
         self.mode_button_group.setExclusive(True)
         self.mode_button_group.addButton(GUI.pushButton_canned_mode)
         self.mode_button_group.addButton(GUI.pushButton_ai_mode)
-        GUI.pushButton_canned_mode.clicked.connect(lambda: self.set_compose_mode(False))
-        GUI.pushButton_ai_mode.clicked.connect(lambda: self.set_compose_mode(True))
+        GUI.pushButton_canned_mode.clicked.connect(
+            lambda: self.set_compose_mode(False))
+        GUI.pushButton_ai_mode.clicked.connect(
+            lambda: self.set_compose_mode(True))
         GUI.stackedWidget.currentChanged.connect(self.handle_stack_change)
         self.ai_mode_enabled = None
         self.handle_stack_change(GUI.stackedWidget.currentIndex())
         self.set_compose_mode(False)
 
+    def _thread_notice(self, message, should_close=False):
+        print(message)
+        try:
+            GUI.label_status.setText(message)
+        except Exception:
+            pass
+        if should_close:
+            try:
+                QtCore.QTimer.singleShot(0, mainWindow.close)
+            except Exception:
+                pass
+
     def check_for_subscription(self):
         while True:
             try:
-                url = var.api + 'verify/check_for_subscription/{}'.format(var.login_email)
+                url = var.api + \
+                    'verify/check_for_subscription/{}'.format(var.login_email)
                 response = requests.post(url, timeout=10)
                 data = response.json()
                 if response.status_code == 200:
@@ -105,31 +127,38 @@ class Main:
                         self.try_failed = 0
                         print(data['end_date'])
                         date = str(data['end_date'])
-                        alert(text='Subscription Expired at {}.\nSoftware will exit soon.'.format(date), title='Alert', button='OK')
-                        mainWindow.close()
+                        self._thread_notice(
+                            'Subscription Expired at {}. Software will exit soon.'.format(
+                                date),
+                            should_close=True
+                        )
                     elif data['status'] == 3:
                         self.try_failed = 0
                         print('sub deactivated')
-                        alert(text='Subscription deativated.\nSoftware will exit soon.', title='Alert', button='OK')
-                        mainWindow.close()
+                        self._thread_notice(
+                            'Subscription deactivated. Software will exit soon.',
+                            should_close=True
+                        )
                     elif data['status'] == 1:
                         self.try_failed = 0
                         print(data['days_left'])
                         if 'Phase' not in GUI.label_status.text():
-                            GUI.label_status.setText('Subscription ends after {} days.'.format(data['days_left']))
+                            GUI.label_status.setText(
+                                'Subscription ends after {} days.'.format(data['days_left']))
                     else:
                         self.try_failed = 0
-                        alert(text='Account not found', title='Alert', button='OK')
-                        mainWindow.close()
+                        self._thread_notice(
+                            'Account not found', should_close=True)
                 else:
-                    alert(text='Error on server.\nContact Admin.', title='Alert', button='OK')
+                    self._thread_notice('Error on server. Contact Admin.')
             except Exception as e:
                 self.try_failed += 1
-                print('error at check_for_subscription: {}'.format(traceback.format_exc()))
+                print('error at check_for_subscription: {}'.format(
+                    traceback.format_exc()))
                 GUI.label_status.setText('Check your internet connection.')
                 if self.try_failed > 3:
-                    alert(text='Check your internet connection.', title='Alert', button='OK')
-                    mainWindow.close()
+                    self._thread_notice(
+                        'Check your internet connection.', should_close=True)
             sleep(self.time_interval_sub_check)
 
     def update(self):
@@ -146,6 +175,22 @@ class Main:
 
     def start(self):
         var.cancel = False
+        var.cache_choice_made = False
+        var.resume_cached_run = False
+        var.load_cache()
+        if var.has_cache:
+            result = confirm(
+                text='Do you want to continue previous(Phase {}) run?'.format(
+                    var.phase_completed),
+                title='Confirmation Window',
+                buttons=['Yes', 'No']
+            )
+            var.cache_choice_made = True
+            if result == 'No':
+                var.has_cache = False
+                var.resume_cached_run = False
+            else:
+                var.resume_cached_run = True
         var.compose_email_subject = GUI.lineEdit_subject.text()
         var.compose_email_body = GUI.textBrowser_body.toPlainText()
         Thread(target=smtp.main, daemon=True).start()
@@ -184,7 +229,6 @@ class Main:
             GUI.textBrowser_body.setStyleSheet('')
         var.email_mode = 'ai' if enable_ai_mode else 'canned'
 
-
     # def smtp(self):
     #     print(len(var.group))
     #     if len(var.group)>=20:
@@ -201,9 +245,6 @@ class Main:
     #         GUI.cancelButton.setEnabled(False)
     #         alert(text="Database should contain at least 20 emails", title="Alert", button="OK")
 
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
-from PyQt5.QtGui import QPainter, QPen, QFont, QColor
-from PyQt5.QtCore import Qt, QTimer, QRectF
 
 class CircularProgress(QWidget):
 
@@ -240,8 +281,10 @@ class CircularProgress(QWidget):
         painter.setFont(QFont('Arial', 70))
         painter.drawText(rect, Qt.AlignCenter, str(self.phase))
         painter.setFont(QFont('Arial', 15))
-        painter.drawText(rect.adjusted(0, 150, 0, 0), Qt.AlignCenter, self.label_status)
+        painter.drawText(rect.adjusted(0, 150, 0, 0),
+                         Qt.AlignCenter, self.label_status)
         painter.end()
+
 
 def set_icon(obj):
     try:
@@ -254,13 +297,16 @@ def set_icon(obj):
         obj.setWindowIcon(QtGui.QIcon(p))
     except Exception as e:
         print(e)
+
+
 if __name__ == '__main__':
     print('ran from here')
 else:
-    app = QtWidgets.QApplication(sys.argv)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     mainWindow = QtWidgets.QMainWindow()
     set_icon(mainWindow)
-    mainWindow.setWindowFlags(mainWindow.windowFlags() | QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowSystemMenuHint)
+    mainWindow.setWindowFlags(mainWindow.windowFlags(
+    ) | QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowSystemMenuHint)
     GUI = MyGui(mainWindow)
     # mainWindow.showMaximized()
     mainWindow.show()

@@ -19,6 +19,8 @@ class Communicate(QObject):
 
 class Download(Ui_Dialog):
     def __init__(self, dialog, name, link, size, path):
+        global cancel
+        cancel = False
         Ui_Dialog.__init__(self)
         self.setupUi(dialog)
         self.dialog = dialog

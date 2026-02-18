@@ -10,10 +10,13 @@ import os.path
 import re
 import requests
 import subprocess
+import platform
+import uuid
+import re as regex_module
 from json import loads, dumps
 from threading import Thread
 import utils
-from pyautogui import alert, password, confirm
+from compat_ui import alert, password, confirm
 
 # regex = '^[a-zA-Z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$'
 regex = '[^@]+@[^@]+\.[^@]+'
@@ -63,7 +66,7 @@ def subprocess_args(include_stdout=True):
 def check(email):
     # pass the regular expression
     # and the string in search() method
-    if(re.search(regex, email)):
+    if (re.search(regex, email)):
         return True
     else:
         return False
@@ -75,6 +78,40 @@ def threaded(fn):
         thread.start()
         return thread
     return wrapper
+
+
+def _get_system_ids():
+    machine_uuid = ''
+    processor_id = ''
+
+    if os.name == 'nt':
+        machine_uuid = subprocess.check_output(
+            'wmic csproduct get uuid', shell=False, **subprocess_args(False)
+        ).decode().split('\n')[1].strip()
+        processor_id = subprocess.check_output(
+            'wmic cpu get ProcessorId', shell=False, **subprocess_args(False)
+        ).decode().split('\n')[1].strip()
+        return machine_uuid, processor_id
+
+    if sys.platform == 'darwin':
+        output = subprocess.check_output(
+            ['ioreg', '-rd1', '-c', 'IOPlatformExpertDevice'],
+            **subprocess_args(False)
+        ).decode(errors='ignore')
+        match = regex_module.search(
+            r'"IOPlatformUUID"\s*=\s*"([^"]+)"', output)
+        if match:
+            machine_uuid = match.group(1).strip()
+
+    elif os.path.exists('/etc/machine-id'):
+        with open('/etc/machine-id', encoding='utf-8') as handle:
+            machine_uuid = handle.read().strip()
+
+    if not machine_uuid:
+        machine_uuid = str(uuid.getnode())
+
+    processor_id = platform.processor() or platform.machine() or machine_uuid
+    return machine_uuid, processor_id
 
 
 class Sign_up(su.Ui_Dialog):
@@ -155,10 +192,26 @@ class Sign_in(si.Ui_Dialog):
 def make_sign_up_requests(email, password, endpoint):
     try:
         status = "Internal error"
-        machine_uuid = subprocess.check_output(
-            'wmic csproduct get uuid', shell=False, **subprocess_args(False)).decode().split('\n')[1].strip()
-        processor_id = subprocess.check_output(
-            'wmic cpu get ProcessorId', shell=False, **subprocess_args(False)).decode().split('\n')[1].strip()
+        if platform.system().lower() == "windows":
+            machine_uuid = (
+                subprocess.check_output(
+                    "wmic csproduct get uuid", shell=False, **subprocess_args(False)
+                )
+                .decode()
+                .split("\n")[1]
+                .strip()
+            )
+            processor_id = (
+                subprocess.check_output(
+                    "wmic cpu get ProcessorId", shell=False, **subprocess_args(False)
+                )
+                .decode()
+                .split("\n")[1]
+                .strip()
+            )
+        else:
+            machine_uuid = var.gmonster_desktop_id
+            processor_id = var.gmonster_desktop_id
         print(machine_uuid, processor_id)
 
         url = var.api + 'verify/' + endpoint
@@ -168,7 +221,7 @@ def make_sign_up_requests(email, password, endpoint):
             'email': email,
             'password': password,
             'version': var.version,
-            'type': 'wum'
+            'type': 'main'
         }
 
         headers = {
@@ -238,20 +291,16 @@ class myMainClass():
             url = var.api + "verify/wum_version/{}".format(var.version)
             response = requests.post(url, timeout=10)
             data = response.json()
+            status_message = "Update checking finished. Now you can login."
             if data['update_needed'] == True:
-                result = confirm(text='New Version Available!!!\nDo you want to download?',
-                                 title='Confirmation Window', buttons=['OK', 'Cancel'])
-                if result == "OK":
-                    # print(data['name'], data['link'], data['size'])
-                    self.c.path_picker.emit(
-                        data['name'], data['link'], data['size'])
-                else:
-                    mainWindow.close()
-                    print("Download rejected")
+                print('New version available: {}'.format(
+                    data.get('name', 'unknown')))
+                status_message = "Update available. You can still login."
+                self.update_needed = True
             else:
                 self.update_needed = True
 
-            GUI.label.setText("Update checking finished. Now you can login.")
+            GUI.label.setText(status_message)
             print("Check Update finished")
         except Exception as e:
             print("error at check_update: {}".format(e))
@@ -287,7 +336,7 @@ if __name__ == '__main__':
     pass
 else:
     global mainWindow
-    app = QtWidgets.QApplication(sys.argv)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     mainWindow = QtWidgets.QMainWindow()
     set_icon(mainWindow)
 

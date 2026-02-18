@@ -20,8 +20,8 @@ class Ui_Dialog(object):
         font.setPointSize(11)
         Dialog.setFont(font)
         Dialog.setStyleSheet("QWidget{\n"
-"    background: #eff2f8;\n"
-"}")
+                             "    background: #eff2f8;\n"
+                             "}")
         self.verticalLayout = QtWidgets.QVBoxLayout(Dialog)
         self.verticalLayout.setContentsMargins(50, 15, 50, 20)
         self.verticalLayout.setObjectName("verticalLayout")
@@ -33,23 +33,26 @@ class Ui_Dialog(object):
         font.setPointSize(11)
         self.label.setFont(font)
         self.label.setStyleSheet("QLabel {\n"
-"    color: #555\n"
-"}")
+                                 "    color: #555\n"
+                                 "}")
         self.label.setObjectName("label")
         self.horizontalLayout.addWidget(self.label)
         self.lineEdit_email = QtWidgets.QLineEdit(Dialog)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        sizePolicy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.lineEdit_email.sizePolicy().hasHeightForWidth())
+        sizePolicy.setHeightForWidth(
+            self.lineEdit_email.sizePolicy().hasHeightForWidth())
         self.lineEdit_email.setSizePolicy(sizePolicy)
         self.lineEdit_email.setMinimumSize(QtCore.QSize(0, 30))
         self.lineEdit_email.setStyleSheet("QLineEdit{\n"
-"    border: 1px solid #ddd;\n"
-"    border-radius: 3px;\n"
-"    padding-left: 20px;\n"
-"    background: #fff;\n"
-"}")
+                                          "    border: 1px solid #ddd;\n"
+                                          "    border-radius: 3px;\n"
+                                          "    padding-left: 20px;\n"
+                                          "    background: #fff;\n"
+                                          "    color: #222;\n"
+                                          "}")
         self.lineEdit_email.setMaxLength(64)
         self.lineEdit_email.setFrame(False)
         self.lineEdit_email.setClearButtonEnabled(True)
@@ -66,15 +69,17 @@ class Ui_Dialog(object):
         font.setPointSize(11)
         self.label_2.setFont(font)
         self.label_2.setStyleSheet("QLabel {\n"
-"    color: #555\n"
-"}")
+                                   "    color: #555\n"
+                                   "}")
         self.label_2.setObjectName("label_2")
         self.horizontalLayout_2.addWidget(self.label_2)
         self.lineEdit_password = QtWidgets.QLineEdit(Dialog)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        sizePolicy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.lineEdit_password.sizePolicy().hasHeightForWidth())
+        sizePolicy.setHeightForWidth(
+            self.lineEdit_password.sizePolicy().hasHeightForWidth())
         self.lineEdit_password.setSizePolicy(sizePolicy)
         self.lineEdit_password.setMinimumSize(QtCore.QSize(0, 30))
         font = QtGui.QFont()
@@ -82,12 +87,14 @@ class Ui_Dialog(object):
         font.setPointSize(8)
         self.lineEdit_password.setFont(font)
         self.lineEdit_password.setStyleSheet("QLineEdit{\n"
-"    border: 1px solid #ddd;\n"
-"    border-radius: 3px;\n"
-"    padding-left: 20px;\n"
-"    background: #fff;\n"
-"}")
-        self.lineEdit_password.setInputMethodHints(QtCore.Qt.ImhHiddenText|QtCore.Qt.ImhNoAutoUppercase|QtCore.Qt.ImhNoPredictiveText|QtCore.Qt.ImhSensitiveData)
+                                             "    border: 1px solid #ddd;\n"
+                                             "    border-radius: 3px;\n"
+                                             "    padding-left: 20px;\n"
+                                             "    background: #fff;\n"
+                                             "    color: #222;\n"
+                                             "}")
+        self.lineEdit_password.setInputMethodHints(
+            QtCore.Qt.ImhHiddenText | QtCore.Qt.ImhNoAutoUppercase | QtCore.Qt.ImhNoPredictiveText | QtCore.Qt.ImhSensitiveData)
         self.lineEdit_password.setMaxLength(20)
         self.lineEdit_password.setFrame(False)
         self.lineEdit_password.setEchoMode(QtWidgets.QLineEdit.Password)
@@ -105,15 +112,17 @@ class Ui_Dialog(object):
         font.setPointSize(11)
         self.label_3.setFont(font)
         self.label_3.setStyleSheet("QLabel {\n"
-"    color: #555\n"
-"}")
+                                   "    color: #555\n"
+                                   "}")
         self.label_3.setObjectName("label_3")
         self.horizontalLayout_3.addWidget(self.label_3)
         self.lineEdit_confirm_password = QtWidgets.QLineEdit(Dialog)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        sizePolicy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.lineEdit_confirm_password.sizePolicy().hasHeightForWidth())
+        sizePolicy.setHeightForWidth(
+            self.lineEdit_confirm_password.sizePolicy().hasHeightForWidth())
         self.lineEdit_confirm_password.setSizePolicy(sizePolicy)
         self.lineEdit_confirm_password.setMinimumSize(QtCore.QSize(0, 30))
         font = QtGui.QFont()
@@ -121,16 +130,19 @@ class Ui_Dialog(object):
         font.setPointSize(8)
         self.lineEdit_confirm_password.setFont(font)
         self.lineEdit_confirm_password.setStyleSheet("QLineEdit{\n"
-"    border: 1px solid #ddd;\n"
-"    border-radius: 3px;\n"
-"    padding-left: 20px;\n"
-"    background: #fff;\n"
-"}")
+                                                     "    border: 1px solid #ddd;\n"
+                                                     "    border-radius: 3px;\n"
+                                                     "    padding-left: 20px;\n"
+                                                     "    background: #fff;\n"
+                                                     "    color: #222;\n"
+                                                     "}")
         self.lineEdit_confirm_password.setMaxLength(20)
         self.lineEdit_confirm_password.setFrame(False)
-        self.lineEdit_confirm_password.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.lineEdit_confirm_password.setEchoMode(
+            QtWidgets.QLineEdit.Password)
         self.lineEdit_confirm_password.setClearButtonEnabled(True)
-        self.lineEdit_confirm_password.setObjectName("lineEdit_confirm_password")
+        self.lineEdit_confirm_password.setObjectName(
+            "lineEdit_confirm_password")
         self.horizontalLayout_3.addWidget(self.lineEdit_confirm_password)
         self.horizontalLayout_3.setStretch(0, 2)
         self.horizontalLayout_3.setStretch(1, 3)
@@ -146,7 +158,8 @@ class Ui_Dialog(object):
         font.setWeight(75)
         self.label_status.setFont(font)
         self.label_status.setText("")
-        self.label_status.setAlignment(QtCore.Qt.AlignLeading|QtCore.Qt.AlignLeft|QtCore.Qt.AlignVCenter)
+        self.label_status.setAlignment(
+            QtCore.Qt.AlignLeading | QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         self.label_status.setWordWrap(True)
         self.label_status.setObjectName("label_status")
         self.horizontalLayout_4.addWidget(self.label_status)
@@ -157,22 +170,22 @@ class Ui_Dialog(object):
         font.setPointSize(11)
         self.pushButton_sign_up.setFont(font)
         self.pushButton_sign_up.setStyleSheet("QPushButton {\n"
-"    border: 1px solid #555;\n"
-"    border-radius: 5px;\n"
-"    border-style: Solid;\n"
-"    background:  rgb(255, 255, 255);\n"
-"    padding: 5px 28px;\n"
-"    color: #555;\n"
-"    }\n"
-"\n"
-"QPushButton:hover {\n"
-"    background:#acacac;\n"
-"    }\n"
-"\n"
-"QPushButton:pressed {\n"
-"    border-style: inset;\n"
-"    background: #acacac;\n"
-"    }")
+                                              "    border: 1px solid #555;\n"
+                                              "    border-radius: 5px;\n"
+                                              "    border-style: Solid;\n"
+                                              "    background:  rgb(255, 255, 255);\n"
+                                              "    padding: 5px 28px;\n"
+                                              "    color: #555;\n"
+                                              "    }\n"
+                                              "\n"
+                                              "QPushButton:hover {\n"
+                                              "    background:#acacac;\n"
+                                              "    }\n"
+                                              "\n"
+                                              "QPushButton:pressed {\n"
+                                              "    border-style: inset;\n"
+                                              "    background: #acacac;\n"
+                                              "    }")
         self.pushButton_sign_up.setObjectName("pushButton_sign_up")
         self.horizontalLayout_4.addWidget(self.pushButton_sign_up)
         self.horizontalLayout_4.setStretch(0, 5)
@@ -187,7 +200,9 @@ class Ui_Dialog(object):
         Dialog.setWindowTitle(_translate("Dialog", "GMonster"))
         self.label.setText(_translate("Dialog", "Email"))
         self.label_2.setText(_translate("Dialog", "Password"))
-        self.lineEdit_password.setPlaceholderText(_translate("Dialog", "8 characters minimum"))
+        self.lineEdit_password.setPlaceholderText(
+            _translate("Dialog", "8 characters minimum"))
         self.label_3.setText(_translate("Dialog", "Confirm Password"))
-        self.lineEdit_confirm_password.setPlaceholderText(_translate("Dialog", "8 characters minimum"))
+        self.lineEdit_confirm_password.setPlaceholderText(
+            _translate("Dialog", "8 characters minimum"))
         self.pushButton_sign_up.setText(_translate("Dialog", "Sign Up"))
