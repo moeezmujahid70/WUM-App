@@ -15,13 +15,12 @@ import threading
 import socks
 import traceback
 import dateutil
-from dialog import myMainClass
 from proxy_smtplib import SMTP, SmtpProxy, Proxifier
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from email.utils import formataddr
 from email.mime.text import MIMEText
-from email.utils import COMMASPACE, formatdate
+from email.utils import COMMASPACE, formatdate, make_msgid
 from email.mime.base import MIMEBase
 from email import encoders
 from pathlib import Path
@@ -301,6 +300,18 @@ def progress_print(phase, progress, status):
         GUI.progress_bar.update()
 
 
+def _update_progress_from_label(label_text, current_count, total_count):
+    if not total_count:
+        return
+    match = re.match('Phase (\\d+)\\s+(\\w+)\\s*:', label_text or '')
+    if not match:
+        return
+    phase_number = int(match.group(1))
+    phase_status = match.group(2).capitalize()
+    progress_print(phase_number, current_count *
+                   100 / total_count, phase_status)
+
+
 def _sleep_with_cancel(total_seconds, step=0.5):
     end_time = time.monotonic() + max(0, total_seconds)
     while time.monotonic() < end_time:
@@ -420,26 +431,28 @@ class SMTP_(threading.Thread):
                     self.FIRSTFROMNAME, self.LASTFROMNAME), 'utf-8')), self.user))
                 msg['To'] = item['EMAIL']
                 msg['Date'] = formatdate(localtime=True)
+                msg['Message-ID'] = make_msgid()
                 msg.attach(MIMEText(body_text, 'plain'))
                 server.sendmail(self.user, item['EMAIL'], msg.as_string())
                 log_email_activity('sent', self.user, item.get(
                     'EMAIL', ''), msg.get('Subject', ''), GUI.label_status.text())
                 t_dict = {'subject': msg['Subject'], 'date': dateutil.parser.parse(
                     msg['Date']).date().strftime('%d-%b-%Y'), 'EMAIL': self.user}
-                session_track[item['EMAIL']]['send_info'].append(t_dict.copy())
+
+                # session_track[item['EMAIL']]['send_info'].append(t_dict.copy())
+                target_email = item.get('EMAIL', '')
+                session_track.setdefault(target_email, {
+                    "avoid": [],
+                    "send_info": [],
+                    "reply_info": []
+                })
+                session_track[target_email]['send_info'].append(t_dict.copy())
                 total_email_sent_count += 1
                 text = '{}: {}/{}'.format(GUI.label_status.text().split(
                     ':')[0], total_email_sent_count, self.total_email_to_be_sent)
                 status_print(label_text=text)
-                label_text = text
-                match = re.match('Phase (\\d+)\\s+(\\w+)\\s*:', label_text)
-                if match:
-                    phase_number = int(match.group(1))
-                    phase_status = match.group(2).capitalize()
-                    progress_print(phase_number, total_email_sent_count *
-                                   100 / self.total_email_to_be_sent, phase_status)
-                else:
-                    print('Unable to match phase information in the label text.')
+                _update_progress_from_label(
+                    text, total_email_sent_count, self.total_email_to_be_sent)
                 server.quit()
                 server.close()
         except Exception as e:
@@ -467,48 +480,67 @@ class SMTP_Centralized(SMTP_):
             for item in self.targets:
                 if var.cancel:
                     break
-                time.sleep(random.randint(self.delay_start, self.delay_end))
+                if _sleep_with_cancel(random.randint(self.delay_start, self.delay_end)):
+                    break
+                if var.cancel:
+                    break
                 server = self.login()
+                if server is None or var.cancel:
+                    break
                 msg = MIMEMultipart('alternative')
-                msg['Subject'] = utils.format_email(
-                    var.compose_email_subject, self.FIRSTFROMNAME, self.LASTFROMNAME, item['FIRSTFROMNAME'])
+                subject_text, body_text = self._compose_subject_body(item)
+                msg['Subject'] = _normalize_subject(
+                    subject_text, allow_reply_prefix=False)
                 msg['From'] = formataddr((str(Header('{} {}'.format(
                     self.FIRSTFROMNAME, self.LASTFROMNAME), 'utf-8')), self.user))
                 msg['To'] = item['EMAIL']
                 msg['Date'] = formatdate(localtime=True)
-                body = utils.format_email(
-                    var.compose_email_body, self.FIRSTFROMNAME, self.LASTFROMNAME, item['FIRSTFROMNAME'])
-                msg.attach(MIMEText(body, 'plain'))
+                msg['Message-ID'] = make_msgid()
+                msg.attach(MIMEText(body_text, 'plain'))
                 server.sendmail(self.user, item['EMAIL'], msg.as_string())
+                log_email_activity('sent', self.user, item.get(
+                    'EMAIL', ''), msg.get('Subject', ''), GUI.label_status.text())
 
                 # Report to centralized server if enabled
                 if self.use_centralized:
                     message_id = msg.get('Message-ID', '')
-                    server_client.report_email_sent(
+                    report_result = server_client.report_email_sent(
                         sender_email=self.user,
                         target_email=item['EMAIL'],
                         subject=msg['Subject'],
                         message_id=message_id
                     )
+                    if isinstance(report_result, dict) and 'error' in report_result:
+                        self.logger.error(
+                            'Centralized report_sent failed (%s -> %s): %s',
+                            self.user, item.get(
+                                'EMAIL'), report_result.get('error')
+                        )
+                        GUI.signal.s.emit(
+                            'Report sent failed for {} -> {}: {}'.format(
+                                self.user, item.get(
+                                    'EMAIL'), report_result.get('error')
+                            ),
+                            False
+                        )
 
                 # Keep original tracking for local compatibility
                 t_dict = {'subject': msg['Subject'], 'date': dateutil.parser.parse(
                     msg['Date']).date().strftime('%d-%b-%Y'), 'EMAIL': self.user}
-                session_track[item['EMAIL']]['send_info'].append(t_dict.copy())
+                target_email = item.get('EMAIL', '')
+                session_track.setdefault(target_email, {
+                    "avoid": [],
+                    "send_info": [],
+                    "reply_info": []
+                })
+                session_track[target_email]['send_info'].append(t_dict.copy())
 
                 total_email_sent_count += 1
                 text = '{}: {}/{}'.format(GUI.label_status.text().split(
                     ':')[0], total_email_sent_count, self.total_email_to_be_sent)
                 status_print(label_text=text)
-                label_text = text
-                match = re.match('Phase (\\d+)\\s+(\\w+)\\s*:', label_text)
-                if match:
-                    phase_number = int(match.group(1))
-                    phase_status = match.group(2).capitalize()
-                    progress_print(phase_number, total_email_sent_count *
-                                   100 / self.total_email_to_be_sent, phase_status)
-                else:
-                    print('Unable to match phase information in the label text.')
+                _update_progress_from_label(
+                    text, total_email_sent_count, self.total_email_to_be_sent)
                 server.quit()
                 server.close()
         except Exception as e:
@@ -573,19 +605,31 @@ class Reply_SMTP(SMTP_):
                 server.sendmail(self.user, item['reciever'], msg.as_string())
                 log_email_activity('replied', self.user, item.get(
                     'reciever', ''), msg.get('Subject', ''), GUI.label_status.text())
+                if server_client.is_centralized_mode():
+                    report_result = server_client.report_email_replied(
+                        recipient_email=self.user,
+                        sender_email=item.get('reciever', ''),
+                        message_id=item.get('msg_id', ''),
+                        replied_at=datetime.utcnow().isoformat()
+                    )
+                    if isinstance(report_result, dict) and 'error' in report_result:
+                        self.logger.warning(
+                            'report_replied failed (%s <- %s): %s',
+                            self.user, item.get(
+                                'reciever', ''), report_result.get('error')
+                        )
+                    else:
+                        self.logger.info(
+                            'report_replied success (%s <- %s) message_id=%s',
+                            self.user, item.get(
+                                'reciever', ''), item.get('msg_id', '')
+                        )
                 total_email_sent_count += 1
                 text = '{}: {}/{}'.format(GUI.label_status.text().split(
                     ':')[0], total_email_sent_count, self.total_email_to_be_sent)
                 status_print(label_text=text)
-                label_text = text
-                match = re.match('Phase (\\d+)\\s+(\\w+)\\s*:', label_text)
-                if match:
-                    phase_number = int(match.group(1))
-                    phase_status = match.group(2).capitalize()
-                    progress_print(phase_number, total_email_sent_count *
-                                   100 / self.total_email_to_be_sent, phase_status)
-                else:
-                    print('Unable to match phase information in the label text.')
+                _update_progress_from_label(
+                    text, total_email_sent_count, self.total_email_to_be_sent)
                 server.quit()
                 server.close()
         except Exception as e:
@@ -650,6 +694,13 @@ def main():
             text = "✓ Connected to centralized warming server"
             status_print(label_text=text, print_text=text,
                          textbrowser=[text, True])
+            heartbeat_started = server_client.start_heartbeat()
+            if heartbeat_started:
+                hb_text = "✓ Centralized heartbeat started"
+                status_print(print_text=hb_text, textbrowser=[hb_text, True])
+            else:
+                hb_text = "⚠ Centralized heartbeat failed to start"
+                status_print(print_text=hb_text, textbrowser=[hb_text, False])
         else:
             text = "⚠ Centralized server unavailable - using local mode"
             status_print(label_text=text, print_text=text,
@@ -815,11 +866,13 @@ def main():
                 next_phase_in = datetime.now(
                 ) + timedelta(hours=item["wait_period"])
 
-                if key in resting_days:
-                    text = "Resting Period added for phase {}".format(key)
-                    status_print(label_text=text, print_text=text,
-                                 textbrowser=[text, True])
-                    next_phase_in = next_phase_in + timedelta(hours=24)
+                # NEW: Progress tracking for waiting period start
+                # temp diabling the resting period
+                # if key in resting_days:
+                #     text = "Resting Period added for phase {}".format(key)
+                #     status_print(label_text=text, print_text=text,
+                #                  textbrowser=[text, True])
+                #     next_phase_in = next_phase_in + timedelta(hours=24)
 
                 cache_dump(key, str(next_phase_in))
 
@@ -850,6 +903,13 @@ def main():
     # Stop async reply monitoring
     async_reply.stop_async_replies()
 
+    # Stop centralized heartbeat and deregister active client accounts
+    deregister_result = server_client.stop_heartbeat(deregister=True)
+    if isinstance(deregister_result, dict) and 'error' in deregister_result:
+        err_text = "⚠ Failed to deregister centralized accounts: {}".format(
+            deregister_result['error'])
+        status_print(print_text=err_text, textbrowser=[err_text, False])
+
     GUI.startButton.setEnabled(True)
     GUI.cancelButton.setEnabled(False)
 
@@ -873,14 +933,18 @@ def sending(phase, group, total_email_to_be_sent, number_of_emails, phase_number
             receiver_list = server_client.get_centralized_targets(
                 user['EMAIL'], number_of_emails, phase_number)
 
-            # Fallback to local if centralized fails
+            # Local fallback intentionally disabled when centralized fetch fails
             if not receiver_list:
-                print(
-                    f"Centralized targets failed for {user['EMAIL']}, falling back to local")
-                receiver_list = prepare_list(group.loc[group['EMAIL'] != user['EMAIL']].copy(
-                ), number_of_emails, session_track[user['EMAIL']]['avoid'])
-                session_track[user['EMAIL']]['avoid'] = list(set(
-                    session_track[user['EMAIL']]['avoid'] + [item['EMAIL'] for item in receiver_list]))
+                logger.error(
+                    'Centralized targets unavailable for %s at phase %s. Local fallback is disabled; skipping sender for this cycle.',
+                    user['EMAIL'], phase_number
+                )
+                GUI.signal.s.emit(
+                    'Centralized targets unavailable for {}. Skipping local fallback.'.format(
+                        user['EMAIL']),
+                    False
+                )
+                continue
         else:
             # Use local target selection (original logic)
             receiver_list = prepare_list(group.loc[group['EMAIL'] != user['EMAIL']].copy(
