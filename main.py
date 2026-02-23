@@ -312,6 +312,25 @@ else:
     mainWindow.show()
     import var
     import smtp
+    import server_client
+
+    def _safe_quit_cleanup():
+        try:
+            var.cancel = True
+        except Exception:
+            pass
+        try:
+            result = server_client.stop_heartbeat(deregister=True)
+            if isinstance(result, dict) and 'error' in result:
+                print('Safe quit deregister warning: {}'.format(
+                    result.get('error')))
+            else:
+                print(
+                    'Safe quit cleanup complete (heartbeat stopped, deregister attempted).')
+        except Exception as exc:
+            print('Safe quit cleanup failed: {}'.format(exc))
+
+    app.aboutToQuit.connect(_safe_quit_cleanup)
     try:
         print(len(var.group))
     except:
