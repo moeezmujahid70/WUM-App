@@ -11,6 +11,8 @@ import threading
 from typing import List, Dict, Optional
 import var
 
+logger = var.logging.getLogger('server_client')
+
 
 class WarmingServerClient:
     """Client for communicating with the warming orchestrator server"""
@@ -88,7 +90,7 @@ class WarmingServerClient:
             print(f"✗ Target request error: {e}")
             return None
 
-    def update_phase(self, email: str, phase: int, send_quota: int, receive_quota: int = None) -> Dict:
+    def update_phase(self, email: str, phase: int, send_quota: int, receive_quota: int = 5) -> Dict:
         """Update account phase and quotas"""
         try:
             url = f"{self.server_url}warming/update_phase"
@@ -96,7 +98,7 @@ class WarmingServerClient:
                 'email': email,
                 'phase': phase,
                 'send_quota': send_quota,
-                'receive_quota': receive_quota or send_quota  # Self-balancing
+                'receive_quota': receive_quota  # Self-balancing
             }
 
             response = self.session.post(url, json=data, timeout=self.timeout)
@@ -278,9 +280,23 @@ class CentralizedTargetProvider:
                     'LASTFROMNAME': 'Name'
                 }
                 targets.append(target_info)
+                logger.info(
+                    'Centralized target selected | sender=%s | phase=%s | target=%s',
+                    sender_email,
+                    phase,
+                    target_result.get('target_email', '')
+                )
 
             # Brief delay to avoid overwhelming server
             time.sleep(0.1)
+
+        logger.info(
+            'Centralized selection summary | sender=%s | phase=%s | requested=%s | selected=%s',
+            sender_email,
+            phase,
+            quantity,
+            len(targets)
+        )
 
         return targets
 
@@ -324,8 +340,8 @@ def initialize_warming_client():
             accounts.append({
                 'email': user['EMAIL'],
                 'phase': 1,  # Start at phase 1
-                'send_quota': 1,  # Will be updated per phase
-                'receive_quota': 1
+                'send_quota': 2,  # Will be updated per phase
+                'receive_quota': 5  # Self-balancing with send_quota
             })
 
         if accounts:
@@ -360,9 +376,22 @@ def get_centralized_targets(sender_email: str, quantity: int, phase: int) -> Lis
         return []
 
     try:
-        return target_provider.prepare_list(sender_email, quantity, phase)
+        targets = target_provider.prepare_list(sender_email, quantity, phase)
+        logger.info(
+            'get_centralized_targets result | sender=%s | phase=%s | selected_targets=%s',
+            sender_email,
+            phase,
+            [item.get('EMAIL', '') for item in targets]
+        )
+        return targets
     except Exception as e:
         print(f"Error getting centralized targets: {e}")
+        logger.error(
+            'get_centralized_targets error | sender=%s | phase=%s | error=%s',
+            sender_email,
+            phase,
+            e
+        )
         return []
 
 
