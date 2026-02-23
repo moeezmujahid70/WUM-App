@@ -32,6 +32,12 @@ class AsyncReplyManager:
         self.reply_queue = queue.Queue()
         self.queued_or_seen = set()
         self.lookback_days = 7  # How many days back to look for emails when checking inbox
+        self.monitor_delay_min_seconds = 30
+        self.monitor_delay_max_seconds = 60
+        self.queue_reply_delay_min_seconds = 300
+        self.queue_reply_delay_max_seconds = 1400
+        self.smtp_reply_delay_start_seconds = 60
+        self.smtp_reply_delay_end_seconds = 300
 
     def start_monitoring(self, group):
         """Start continuous inbox monitoring for all accounts"""
@@ -84,7 +90,8 @@ class AsyncReplyManager:
                             (current_time - self.last_check[email]).total_seconds() >= self.check_interval):
 
                         # Add some randomization to avoid pattern detection
-                        delay = random.randint(20, 60)  # 30-120 seconds
+                        delay = random.randint(
+                            self.monitor_delay_min_seconds, self.monitor_delay_max_seconds)
                         time.sleep(delay)
 
                         if var.cancel:
@@ -161,7 +168,8 @@ class AsyncReplyManager:
                         continue
 
                 # Add to reply queue with randomized delay
-                reply_delay = random.randint(200, 1200)  # 5-30 minutes
+                reply_delay = random.randint(
+                    self.queue_reply_delay_min_seconds, self.queue_reply_delay_max_seconds)
                 reply_time = datetime.now() + timedelta(seconds=reply_delay)
                 reply_task = {
                     'user': user,
@@ -360,8 +368,8 @@ class AsyncReplyManager:
                 FIRSTFROMNAME=FIRSTFROMNAME,
                 LASTFROMNAME=LASTFROMNAME,
                 targets=reply_targets,
-                delay_start=60,    # Reply delay range in seconds (60–300)
-                delay_end=300,
+                delay_start=self.smtp_reply_delay_start_seconds,
+                delay_end=self.smtp_reply_delay_end_seconds,
                 total_email_to_be_sent=1
             )
 
