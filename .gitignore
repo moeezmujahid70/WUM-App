@@ -137,4 +137,14 @@ wenv/
 .Ds_Store
 .Ds_store/
 data/
+
+# Secrets and local credentials
+*.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+secrets*.json
+*.secrets.json
  
