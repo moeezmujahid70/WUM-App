@@ -22,7 +22,7 @@ WUM is a PyQt5 desktop app for email warmup and campaign automation.
 1. Clone repository
 
 ```bash
-git clone https://github.com/lildoktor/WUM.git
+git clone https://github.com/moeezmujahid70/WUM-App.git
 cd WUM
 ```
 
@@ -137,6 +137,24 @@ pyinstaller --clean WUM.spec
 
 Build output is generated under `dist/`.
 
+## GitHub Workflow Test
+
+This repository includes the Windows build workflow at `.github/workflows/build-windows-exe.yml`.
+
+- Trigger conditions:
+  - push to `main`, `master`, or `pool/merge`
+  - manual run via **Actions -> Build Windows EXE -> Run workflow**
+- Expected result:
+  - workflow run completes on GitHub Actions
+  - artifact `WUM-windows-exe` is uploaded
+
+Quick test command:
+
+```bash
+git commit --allow-empty -m "ci: trigger workflow test"
+git push origin main
+```
+
 ## Troubleshooting
 
 - Missing config errors:
@@ -150,7 +168,6 @@ Build output is generated under `dist/`.
 
 - UI or thread-stop issues:
   - ensure long-running tasks respect cancellation through shared state
-
 
 ## Notes
 
