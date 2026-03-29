@@ -32,7 +32,7 @@ except ImportError:
 def override_where():
     """ overrides certifi.core.where to return actual location of cacert.pem"""
     # change this to match the location of cacert.pem
-    return os.path.abspath(os.path.join(os.getcwd(), "database", "cacert.pem"))
+    return os.path.abspath(os.path.join(os.getcwd(), "data", "gmonster_config", "cacert.pem"))
 
 
 # is the program compiled?
@@ -108,7 +108,10 @@ class SingleInstance:
 
 version = '2.2r'
 logs_dir = 'logs'
-db_base_dir = 'database'
+db_base_dir = os.path.join('data', 'gmonster_config')
+gmonster_base_dir = os.path.join('data', 'gmonster_config')
+sheets_base_dir = os.path.join('data', 'sheets')
+config_base_dir = os.path.join('data', 'wum_config')
 cancel = False
 thread_open = 0
 imap_server = 'imap.gmail.com'
@@ -121,10 +124,20 @@ try:
 except Exception as e:
     print('{} Folder not found or creation failed - {}'.format(logs_dir, e))
 try:
-    if not os.path.isdir(db_base_dir):
-        os.mkdir(db_base_dir)
+    if not os.path.isdir(gmonster_base_dir):
+        os.makedirs(gmonster_base_dir)
 except Exception as e:
-    print('{} Folder not found or creation failed - {}'.format(db_base_dir, e))
+    print('{} Folder not found or creation failed - {}'.format(gmonster_base_dir, e))
+try:
+    if not os.path.isdir(sheets_base_dir):
+        os.makedirs(sheets_base_dir)
+except Exception as e:
+    print('{} Folder not found or creation failed - {}'.format(sheets_base_dir, e))
+try:
+    if not os.path.isdir(config_base_dir):
+        os.makedirs(config_base_dir)
+except Exception as e:
+    print('{} Folder not found or creation failed - {}'.format(config_base_dir, e))
 # Create and configure logger
 logging.basicConfig(
     filename=logs_dir + '/wum.log',
@@ -145,10 +158,10 @@ openai_api_key = ''
 openai_model = 'gpt-4o-mini'
 openai_base_url = 'https://api.openai.com/v1'
 openai_timeout = 45
-ai_prompt_path = os.path.join(db_base_dir, 'PROMPT1.txt')
-ai_email_template_path = os.path.join(db_base_dir, 'EMAIL1.txt')
-ai_reply_prompt_path = os.path.join(db_base_dir, 'PROMPT2.txt')
-ai_reply_email_template_path = os.path.join(db_base_dir, 'EMAIL2.txt')
+ai_prompt_path = os.path.join(config_base_dir, 'PROMPT1.txt')
+ai_email_template_path = os.path.join(config_base_dir, 'EMAIL1.txt')
+ai_reply_prompt_path = os.path.join(config_base_dir, 'PROMPT2.txt')
+ai_reply_email_template_path = os.path.join(config_base_dir, 'EMAIL2.txt')
 limit_of_thread = 100
 login_email = ''
 gmonster_desktop_id = '6296d839-9b35-4c12-830a-6c871affc3e2'
@@ -207,7 +220,7 @@ def load_cache():
     global has_cache
     global session_track
     try:
-        with open('wum_config/cache.json', encoding='utf-8') as json_file:
+        with open(os.path.join(config_base_dir, 'cache.json'), encoding='utf-8') as json_file:
             data = load(json_file)
         if int(data['phase_completed']) < 7:
             has_cache = True
@@ -220,7 +233,7 @@ def load_cache():
         print('Exception occurred at cache loading : {}'.format(e))
 
 
-config_path = 'wum_config/config.json'
+config_path = os.path.join(config_base_dir, 'config.json')
 try:
     with open(config_path, encoding='utf-8') as json_file:
         data = load(json_file)
@@ -292,7 +305,7 @@ mail_server = {
 }
 
 try:
-    with open(f'{db_base_dir}/gmonster_config.json', encoding='utf-8') as json_file:
+    with open(os.path.join(gmonster_base_dir, 'gmonster_config.json'), encoding='utf-8') as json_file:
         data = load(json_file)
     config = data['config']
     mail_server = config['mail_server']
@@ -308,9 +321,9 @@ def compose_loading():
     global compose_email_subject
     global compose_email_body
     try:
-        with open('wum_config/subject.txt', 'r', encoding='utf-8') as f:
+        with open(os.path.join(config_base_dir, 'subject.txt'), 'r', encoding='utf-8') as f:
             compose_email_subject = f.read().strip()
-        with open('wum_config/body.txt', 'r', encoding='utf-8') as f:
+        with open(os.path.join(config_base_dir, 'body.txt'), 'r', encoding='utf-8') as f:
             compose_email_body = f.read().strip()
     except Exception as e:
         print('Exception occurred at subject/body loading : {}'.format(e))
@@ -321,9 +334,9 @@ compose_loading()
 
 def compose_saving():
     try:
-        with open('database/subject.txt', 'w', encoding='utf-8') as f:
+        with open(os.path.join(config_base_dir, 'subject.txt'), 'w', encoding='utf-8') as f:
             f.write(compose_email_subject)
-        with open('database/body.txt', 'w', encoding='utf-8') as f:
+        with open(os.path.join(config_base_dir, 'body.txt'), 'w', encoding='utf-8') as f:
             f.write(compose_email_body)
     except Exception as e:
         print('Exception occurred at subject/body loading : {}'.format(e))
@@ -333,9 +346,9 @@ def load_db(parent=None):
     global group
     try:
         group_a = pd.read_excel(
-            f'{db_base_dir}/group_a.xlsx', engine='openpyxl')
+            os.path.join(sheets_base_dir, 'group_a.xlsx'), engine='openpyxl')
         group_b = pd.read_excel(
-            f'{db_base_dir}/group_b.xlsx', engine='openpyxl')
+            os.path.join(sheets_base_dir, 'group_b.xlsx'), engine='openpyxl')
         group = [group_a, group_b]
         group = pd.concat(group)
         group = group.reset_index(drop=True)

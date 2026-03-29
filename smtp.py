@@ -67,7 +67,7 @@ def _resolve_prompt_template():
     if _prompt_template_cache is None:
         prompt_path = _normalize_template_path(
             getattr(var, 'ai_prompt_path', '') or os.path.join(
-                var.db_base_dir, 'PROMPT1.txt')
+                var.config_base_dir, 'PROMPT1.txt')
         )
         try:
             _prompt_template_cache = Path(
@@ -83,7 +83,7 @@ def _resolve_email_template():
     if _email_template_cache is None:
         template_path = _normalize_template_path(
             getattr(var, 'ai_email_template_path', '') or os.path.join(
-                var.db_base_dir, 'EMAIL1.txt')
+                var.config_base_dir, 'EMAIL1.txt')
         )
         try:
             _email_template_cache = Path(
@@ -99,7 +99,7 @@ def _resolve_reply_prompt_template():
     if _reply_prompt_template_cache is None:
         prompt_path = _normalize_template_path(
             getattr(var, 'ai_reply_prompt_path', '') or os.path.join(
-                var.db_base_dir, 'PROMPT2.txt')
+                var.config_base_dir, 'PROMPT2.txt')
         )
         try:
             _reply_prompt_template_cache = Path(
@@ -115,7 +115,7 @@ def _resolve_reply_email_template():
     if _reply_email_template_cache is None:
         template_path = _normalize_template_path(
             getattr(var, 'ai_reply_email_template_path', '') or os.path.join(
-                var.db_base_dir, 'EMAIL2.txt')
+                var.config_base_dir, 'EMAIL2.txt')
         )
         try:
             _reply_email_template_cache = Path(
@@ -359,7 +359,7 @@ class SMTP_(threading.Thread):
             if mail_vendor not in var.mail_server:
                 var.mail_server[mail_vendor] = new_domain_config
                 var.data['config']['mail_server'] = var.mail_server
-                with open(f'{var.db_base_dir}/gmonster_config.json', 'w', encoding='utf-8') as json_file:
+                with open(os.path.join(var.gmonster_base_dir, 'gmonster_config.json'), 'w', encoding='utf-8') as json_file:
                     json.dump(var.data, json_file, indent=4)
             self.smtp_server = var.mail_server[mail_vendor]['smtp']['server']
             self.smtp_port = var.mail_server[mail_vendor]['smtp']['port']
@@ -932,6 +932,18 @@ def sending(phase, group, total_email_to_be_sent, number_of_emails, phase_number
         if server_client.is_centralized_mode():
             receiver_list = server_client.get_centralized_targets(
                 user['EMAIL'], number_of_emails, phase_number)
+            selected_emails = [item.get('EMAIL', '') for item in receiver_list]
+            logger.info(
+                'Sending target selection | mode=centralized | sender=%s | phase=%s | targets=%s',
+                user['EMAIL'], phase_number, selected_emails
+            )
+            GUI.signal.s.emit(
+                'Centralized targets for {}: {}'.format(
+                    user['EMAIL'], ', '.join(
+                        selected_emails) if selected_emails else 'none'
+                ),
+                True if selected_emails else False
+            )
 
             # Local fallback intentionally disabled when centralized fetch fails
             if not receiver_list:
@@ -949,6 +961,7 @@ def sending(phase, group, total_email_to_be_sent, number_of_emails, phase_number
             # Use local target selection (original logic)
             receiver_list = prepare_list(group.loc[group['EMAIL'] != user['EMAIL']].copy(
             ), number_of_emails, session_track[user['EMAIL']]['avoid'])
+            selected_emails = [item.get('EMAIL', '') for item in receiver_list]
             session_track[user['EMAIL']]['avoid'] = list(set(
                 session_track[user['EMAIL']]['avoid'] + [item['EMAIL'] for item in receiver_list]))
 
@@ -1005,7 +1018,7 @@ def cache_dump(phase, time_str):
     try:
         data = {'phase_completed': phase,
                 'session_track': session_track, 'next_phase_in': time_str}
-        with open('wum_config/cache.json', 'w') as json_file:
+        with open(os.path.join(var.config_base_dir, 'cache.json'), 'w') as json_file:
             json.dump(data, json_file, indent=4)
         print('cache updated')
     except Exception as e:
