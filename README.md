@@ -151,6 +151,7 @@ Build output is generated under `dist/`.
 - UI or thread-stop issues:
   - ensure long-running tasks respect cancellation through shared state
 
+
 ## Notes
 
 - Do not hand-edit generated UI Python files (`gui.py`, `p_gui.py`, etc.).
