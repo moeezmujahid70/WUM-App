@@ -107,7 +107,7 @@ class SingleInstance:
 
 
 version = '2.2r'
-logs_dir = 'logs'
+logs_dir = os.path.join('data', 'logs', 'wum')
 db_base_dir = os.path.join('data', 'gmonster_config')
 gmonster_base_dir = os.path.join('data', 'gmonster_config')
 sheets_base_dir = os.path.join('data', 'sheets')
@@ -120,7 +120,7 @@ smtp_server = 'smtp.gmail.com'
 smtp_port = 587
 try:
     if not os.path.isdir(logs_dir):
-        os.mkdir(logs_dir)
+        os.makedirs(logs_dir)
 except Exception as e:
     print('{} Folder not found or creation failed - {}'.format(logs_dir, e))
 try:
