@@ -13,8 +13,10 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QMessageBox, QButtonGroup
 import sys
 import os
+import atexit
+import signal
 from time import sleep
-from threading import Thread
+from threading import Lock, Thread
 import json
 from compat_ui import alert, password, confirm
 import datetime
@@ -199,6 +201,8 @@ class Main:
 
     def cancel(self):
         var.cancel = True
+        Thread(target=_safe_quit_cleanup, daemon=True,
+               kwargs={'source': 'cancel'}).start()
         GUI.startButton.setEnabled(True)
         GUI.cancelButton.setEnabled(False)
 
@@ -314,11 +318,24 @@ else:
     import smtp
     import server_client
 
-    def _safe_quit_cleanup():
+    _cleanup_lock = Lock()
+    _cleanup_done = False
+
+    def _safe_quit_cleanup(source='quit'):
+        global _cleanup_done
+        with _cleanup_lock:
+            if _cleanup_done:
+                return
+            _cleanup_done = True
         try:
             var.cancel = True
         except Exception:
             pass
+        try:
+            import async_reply
+            async_reply.stop_async_replies()
+        except Exception as exc:
+            print('Safe quit async cleanup warning: {}'.format(exc))
         try:
             result = server_client.stop_heartbeat(deregister=True)
             if isinstance(result, dict) and 'error' in result:
@@ -326,11 +343,24 @@ else:
                     result.get('error')))
             else:
                 print(
-                    'Safe quit cleanup complete (heartbeat stopped, deregister attempted).')
+                    'Safe quit cleanup complete from {} (heartbeat stopped, deregister attempted).'.format(source))
         except Exception as exc:
             print('Safe quit cleanup failed: {}'.format(exc))
 
     app.aboutToQuit.connect(_safe_quit_cleanup)
+    atexit.register(_safe_quit_cleanup, 'atexit')
+
+    def _signal_cleanup(signum, _frame):
+        _safe_quit_cleanup('signal {}'.format(signum))
+        raise SystemExit(0)
+
+    for _sig in (getattr(signal, 'SIGINT', None), getattr(signal, 'SIGTERM', None)):
+        if _sig is None:
+            continue
+        try:
+            signal.signal(_sig, _signal_cleanup)
+        except (OSError, ValueError):
+            pass
     try:
         print(len(var.group))
     except:

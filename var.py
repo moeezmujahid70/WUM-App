@@ -9,6 +9,7 @@ import tempfile
 import threading
 import sys
 import os
+import re
 from json import load, dumps
 from compat_ui import alert, password, confirm
 global compose_email_body
@@ -152,6 +153,7 @@ sign_up_label = ''
 sign_in_label = ''
 signed_in = False
 email_mode = 'canned'
+proxy_on = False
 ai_prompt_subject = 'AI generated outreach'
 ai_prompt_body = 'This is a predefined AI prompt. Replace with your AI-generated content.'
 openai_api_key = ''
@@ -171,6 +173,7 @@ resume_cached_run = False
 session_track = {}
 phase_completed = '0'
 next_phase_in = ''
+wum_mail_server_config = {}
 
 
 def _mask_secret(secret):
@@ -202,6 +205,12 @@ def _normalize_config_path(path_value, default_path):
         return default_path
     normalized = os.path.normpath(
         path_text.replace('\\', os.sep).replace('/', os.sep))
+    if os.path.exists(normalized):
+        return normalized
+    filename = os.path.basename(normalized)
+    data_config_path = os.path.join(config_base_dir, filename)
+    if filename and os.path.exists(data_config_path):
+        return data_config_path
     return normalized
 
 
@@ -242,6 +251,7 @@ try:
     api = _normalize_api_base(config.get('api', api), api)
     limit_of_thread = config['limit_of_thread']
     login_email = config['login_email']
+    proxy_on = bool(config.get('proxy_on', proxy_on))
     openai_api_key = (config.get('openai_api_key',
                       openai_api_key) or '').strip()
     openai_model = config.get('openai_model', openai_model)
@@ -258,6 +268,7 @@ try:
         config.get('ai_reply_prompt_path', ai_reply_prompt_path), ai_reply_prompt_path)
     ai_reply_email_template_path = _normalize_config_path(
         config.get('ai_reply_email_template_path', ai_reply_email_template_path), ai_reply_email_template_path)
+    wum_mail_server_config = config.get('mail_server', {})
     _log_ai_settings('config.json')
 except Exception as e:
     print("Exception occurred at config loading : {}".format(e))
@@ -279,7 +290,7 @@ except Exception as e:
 #         pass
 # _log_ai_settings('env override')
 
-mail_server = {
+DEFAULT_MAIL_SERVER = {
     "gmail": {
         "imap": {
             "server": "imap.gmail.com",
@@ -289,7 +300,8 @@ mail_server = {
             "server": "smtp.gmail.com",
             "port": 587,
             "require_ssl": False
-        }
+        },
+        "sent_folder": "\"[Gmail]/Sent Mail\""
     },
     "outlook": {
         "imap": {
@@ -300,15 +312,113 @@ mail_server = {
             "server": "smtp.office365.com",
             "port": 587,
             "require_ssl": False
-        }
+        },
+        "sent_folder": "Sent"
+    },
+    "gmx": {
+        "imap": {
+            "server": "imap.gmx.com",
+            "port": 993
+        },
+        "smtp": {
+            "server": "mail.gmx.com",
+            "port": 587,
+            "require_ssl": False
+        },
+        "sent_folder": "Sent"
+    },
+    "yahoo": {
+        "imap": {
+            "server": "imap.mail.yahoo.com",
+            "port": 993
+        },
+        "smtp": {
+            "server": "smtp.mail.yahoo.com",
+            "port": 465,
+            "require_ssl": True
+        },
+        "sent_folder": "Sent"
+    },
+    "mail": {
+        "imap": {
+            "server": "imap.mail.ru",
+            "port": 993
+        },
+        "smtp": {
+            "server": "smtp.mail.ru",
+            "port": 465,
+            "require_ssl": True
+        },
+        "sent_folder": "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-"
     }
 }
+mail_server = DEFAULT_MAIL_SERVER.copy()
+
+
+def _merge_mail_server_config(loaded_mail_server, base_mail_server=None):
+    base_mail_server = base_mail_server or DEFAULT_MAIL_SERVER
+    merged = {provider: config.copy()
+              for provider, config in base_mail_server.items()}
+    for provider, provider_config in (loaded_mail_server or {}).items():
+        base_config = merged.get(provider, {}).copy()
+        for section, section_config in (provider_config or {}).items():
+            if isinstance(section_config, dict) and isinstance(base_config.get(section), dict):
+                nested = base_config[section].copy()
+                nested.update(section_config)
+                base_config[section] = nested
+            else:
+                base_config[section] = section_config
+        merged[provider] = base_config
+    return merged
+
+
+mail_server = _merge_mail_server_config(wum_mail_server_config)
+
+
+def resolve_mail_vendor(email_address):
+    regex = re.compile('(?<=@)(\\S+$)')
+    mail_domain = regex.findall(email_address or '')[0].lower()
+    parts = mail_domain.split('.')
+    if len(parts) > 2:
+        return '.'.join(parts[:-1])
+    if len(parts) == 2:
+        return parts[0]
+    return mail_domain
+
+
+def get_mail_server_config(email_address):
+    return mail_server[resolve_mail_vendor(email_address)]
+
+
+def get_sent_folder(email_address):
+    return get_mail_server_config(email_address).get('sent_folder', 'Sent')
+
+
+def parse_proxy_port(proxy_value):
+    if not proxy_on:
+        return '', ''
+    proxy_text = str(proxy_value or '').strip()
+    if not proxy_text or proxy_text.lower() == 'nan':
+        return '', ''
+    proxy_host, separator, proxy_port = proxy_text.rpartition(':')
+    if not separator or not proxy_host.strip():
+        return '', ''
+    try:
+        proxy_port = int(proxy_port.strip())
+    except (TypeError, ValueError):
+        return '', ''
+    if proxy_port <= 0 or proxy_port > 65535:
+        return '', ''
+    return proxy_host.strip(), proxy_port
+
 
 try:
     with open(os.path.join(gmonster_base_dir, 'gmonster_config.json'), encoding='utf-8') as json_file:
         data = load(json_file)
     config = data['config']
-    mail_server = config['mail_server']
+    mail_server = _merge_mail_server_config(
+        config.get('mail_server', {}), mail_server)
+    proxy_on = bool(config.get('proxy_on', proxy_on))
     gmonster_desktop_id = str(config.get(
         'desktop_id', gmonster_desktop_id)).strip() or gmonster_desktop_id
 except Exception as e:
@@ -352,9 +462,9 @@ def load_db(parent=None):
         group = [group_a, group_b]
         group = pd.concat(group)
         group = group.reset_index(drop=True)
-        group.fillna(' ', inplace=True)
+        group.fillna('', inplace=True)
         group = group.astype(str)
-        group = group.loc[group['PROXY:PORT'] != ' ']
+        group = group.loc[group['EMAIL'].str.strip() != '']
         len_group_initial = len(group)
         group = group.drop_duplicates(subset='EMAIL')
         len_group_final = len(group)

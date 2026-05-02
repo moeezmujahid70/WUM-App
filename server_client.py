@@ -477,6 +477,9 @@ def start_heartbeat(interval_seconds: int = HEARTBEAT_INTERVAL_SECONDS) -> bool:
 def stop_heartbeat(deregister: bool = False) -> Dict:
     """Stop heartbeat loop and optionally deregister active accounts."""
     global heartbeat_thread
+    global warming_client
+    global target_provider
+    global registered_accounts_cache
     result = {'status': 'noop'}
 
     heartbeat_stop_event.set()
@@ -490,6 +493,9 @@ def stop_heartbeat(deregister: bool = False) -> Dict:
             result = warming_client.deregister_client(accounts)
             if isinstance(result, dict) and 'error' not in result:
                 print('✓ Deregistered accounts from centralized pool')
+        warming_client = None
+        target_provider = None
+        registered_accounts_cache = []
         return result
 
     return result

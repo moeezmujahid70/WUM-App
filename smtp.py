@@ -15,7 +15,7 @@ import threading
 import socks
 import traceback
 import dateutil
-from proxy_smtplib import SMTP, SmtpProxy, Proxifier
+from proxy_smtplib import SmtpProxy, SmtpProxySSL, Proxifier
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from email.utils import formataddr
@@ -344,16 +344,7 @@ class SMTP_(threading.Thread):
         self.logger = logger
         self.total_email_to_be_sent = kwargs['total_email_to_be_sent']
         try:
-            regex = re.compile('(?<=@)(\\S+$)')
-            mail_domain = regex.findall(self.user)[0]
-            mail_vendor = mail_domain.split('.')[0]
-            parts = mail_domain.split('.')
-            if len(parts) > 2:
-                mail_vendor = '.'.join(parts[:-1])
-            elif len(parts) == 2:
-                mail_vendor = parts[0]
-            else:
-                mail_vendor = mail_domain
+            mail_vendor = var.resolve_mail_vendor(self.user)
             new_domain_config = {'imap': {'server': 'imap.gmail.com', 'port': 993}, 'smtp': {
                 'server': 'smtp.gmail.com', 'port': 587, 'require_ssl': False}}
             if mail_vendor not in var.mail_server:
@@ -361,8 +352,13 @@ class SMTP_(threading.Thread):
                 var.data['config']['mail_server'] = var.mail_server
                 with open(os.path.join(var.gmonster_base_dir, 'gmonster_config.json'), 'w', encoding='utf-8') as json_file:
                     json.dump(var.data, json_file, indent=4)
-            self.smtp_server = var.mail_server[mail_vendor]['smtp']['server']
-            self.smtp_port = var.mail_server[mail_vendor]['smtp']['port']
+            smtp_config = var.mail_server[mail_vendor]['smtp']
+            self.smtp_server = smtp_config['server']
+            self.smtp_port = smtp_config['port']
+            require_ssl = smtp_config.get('require_ssl', False)
+            if isinstance(require_ssl, str):
+                require_ssl = require_ssl.strip().lower() == 'true'
+            self.smtp_require_ssl = bool(require_ssl)
         except:
             logger.error(f'SmtpBase error: {traceback.format_exc()}')
             raise
@@ -389,16 +385,33 @@ class SMTP_(threading.Thread):
         for count in range(0, 3):
             try:
                 if self.proxy_host != '':
-                    server = SMTP(timeout=30)
-                    server.connect_proxy(host=self.smtp_server, port=self.smtp_port, proxy_host=self.proxy_host, proxy_port=int(
-                        self.proxy_port), proxy_type=socks.PROXY_TYPE_SOCKS5, proxy_user=self.proxy_user, proxy_pass=self.proxy_pass)
+                    proxifier = Proxifier(
+                        self.proxy_host, int(self.proxy_port), 'SOCKS5',
+                        self.proxy_user, self.proxy_pass
+                    )
+                    if self.smtp_require_ssl:
+                        server = SmtpProxySSL(
+                            self.smtp_server, self.smtp_port, timeout=30,
+                            proxifier=proxifier
+                        )
+                    else:
+                        server = SmtpProxy(
+                            self.smtp_server, self.smtp_port, timeout=30,
+                            proxifier=proxifier
+                        )
                     server.set_debuglevel(0)
                 else:
-                    server = smtplib.SMTP(self.smtp_server, self.smtp_port)
+                    if self.smtp_require_ssl:
+                        server = smtplib.SMTP_SSL(
+                            self.smtp_server, self.smtp_port, timeout=30)
+                    else:
+                        server = smtplib.SMTP(
+                            self.smtp_server, self.smtp_port, timeout=30)
                     server.set_debuglevel(0)
                 server.ehlo()
-                server.starttls()
-                server.ehlo()
+                if not self.smtp_require_ssl:
+                    server.starttls()
+                    server.ehlo()
                 server.login(self.user, self.password)
                 break
             except Exception as e:
@@ -660,12 +673,7 @@ def reply(phase, total_email_to_be_replied):
         name = user['EMAIL']
         FIRSTFROMNAME = user['FIRSTFROMNAME']
         LASTFROMNAME = user['LASTFROMNAME']
-        if user['PROXY:PORT'] != ' ':
-            proxy_host = user['PROXY:PORT'].split(':')[0]
-            proxy_port = int(user['PROXY:PORT'].split(':')[1])
-        else:
-            proxy_host = ''
-            proxy_port = ''
+        proxy_host, proxy_port = var.parse_proxy_port(user.get('PROXY:PORT'))
         if var.cancel:
             break
         while var.thread_open >= var.limit_of_thread:
@@ -972,12 +980,7 @@ def sending(phase, group, total_email_to_be_sent, number_of_emails, phase_number
         name = user['EMAIL']
         FIRSTFROMNAME = user['FIRSTFROMNAME']
         LASTFROMNAME = user['LASTFROMNAME']
-        if user['PROXY:PORT'] != ' ':
-            proxy_host = user['PROXY:PORT'].split(':')[0]
-            proxy_port = int(user['PROXY:PORT'].split(':')[1])
-        else:
-            proxy_host = ''
-            proxy_port = ''
+        proxy_host, proxy_port = var.parse_proxy_port(user.get('PROXY:PORT'))
         if var.cancel:
             break
         while var.thread_open >= var.limit_of_thread:

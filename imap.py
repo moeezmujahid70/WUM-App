@@ -77,18 +77,10 @@ class IMAP_(threading.Thread):
         self.targets = kwargs['targets']
         self.logger = logger
         try:
-            regex = re.compile('(?<=@)(\\S+$)')
-            mail_domain = regex.findall(self.imap_user)[0]
-            mail_vendor = mail_domain.split('.')[0]
-            parts = mail_domain.split('.')
-            if len(parts) > 2:
-                mail_vendor = '.'.join(parts[:-1])
-            elif len(parts) == 2:
-                mail_vendor = parts[0]
-            else:
-                mail_vendor = mail_domain
-            self.imap_server = var.mail_server[mail_vendor]['imap']['server']
-            self.imap_port = var.mail_server[mail_vendor]['imap']['port']
+            self.mail_vendor = var.resolve_mail_vendor(self.imap_user)
+            imap_config = var.mail_server[self.mail_vendor]['imap']
+            self.imap_server = imap_config['server']
+            self.imap_port = imap_config['port']
         except:
             logger.error(f'ImapBase error: {traceback.format_exc()}')
             raise
@@ -107,14 +99,15 @@ class IMAP_(threading.Thread):
                 if var.cancel:
                     break
                 try:
-                    imap.select('[Gmail]/Spam')
-                    tmp, data = imap.uid('search', None, 'FROM', item['EMAIL'])
-                    uids = data[0]
-                    if len(uids) > 0:
-                        for uid in uids.split():
-                            result = imap.uid('COPY', uid, 'Inbox')
-                            if result[0] == 'OK':
-                                total_email_moved += 1
+                    if self.mail_vendor == 'gmail':
+                        imap.select('[Gmail]/Spam')
+                        tmp, data = imap.uid('search', None, 'FROM', item['EMAIL'])
+                        uids = data[0]
+                        if len(uids) > 0:
+                            for uid in uids.split():
+                                result = imap.uid('COPY', uid, 'Inbox')
+                                if result[0] == 'OK':
+                                    total_email_moved += 1
 
 
                         # spam_info.put(
@@ -195,12 +188,7 @@ def main(group, session_track):
         name = user['EMAIL']
         FIRSTFROMNAME = user['FIRSTFROMNAME']
         LASTFROMNAME = user['LASTFROMNAME']
-        if user['PROXY:PORT'] != ' ':
-            proxy_host = user['PROXY:PORT'].split(':')[0]
-            proxy_port = int(user['PROXY:PORT'].split(':')[1])
-        else:
-            proxy_host = ''
-            proxy_port = ''
+        proxy_host, proxy_port = var.parse_proxy_port(user.get('PROXY:PORT'))
         if var.cancel:
             break
         while var.thread_open >= var.limit_of_thread:

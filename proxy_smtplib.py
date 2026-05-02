@@ -123,6 +123,28 @@ class SmtpProxy(smtplib.SMTP):
         return self._proxifier.get_socket(self.source_address, host, port, timeout)
 
 
+class SmtpProxySSL(smtplib.SMTP_SSL):
+    """
+    Descendant of SMTP_SSL with optional proxy wrapping.
+    """
+
+    def __init__(self, host='', port=0, local_hostname=None, timeout=30, source_address=None,
+                 context=None, proxifier: Proxifier=None):
+        self._proxifier = proxifier
+        super().__init__(host=host, port=port, local_hostname=local_hostname,
+                         timeout=timeout, source_address=source_address, context=context)
+
+    def _get_socket(self, host, port, timeout):
+        if not self._proxifier:
+            return super()._get_socket(host, port, timeout)
+        if timeout is not None and not timeout:
+            raise ValueError('Non-blocking socket (timeout=0) is not supported')
+        if self.debuglevel > 0:
+            self._print_debug('connect: to', (host, port), self.source_address)
+        sock = self._proxifier.get_socket(self.source_address, host, port, timeout)
+        return self.context.wrap_socket(sock, server_hostname=self._host)
+
+
 class SMTP(smtplib.SMTP):
     """This class manages a connection to an SMTP or ESMTP server.
     HTTP/SOCKS4/SOCKS5 proxy servers are supported

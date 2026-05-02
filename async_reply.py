@@ -7,7 +7,6 @@ Continuously monitors inbox and sends replies independently from sending phases
 import threading
 import time
 import random
-import re
 from datetime import datetime, timedelta, timezone
 import email as py_email
 from email.utils import parseaddr, parsedate_to_datetime
@@ -194,22 +193,13 @@ class AsyncReplyManager:
             mailbox_email = user['EMAIL']
             mailbox_pass = user['EMAIL_PASS']
 
-            regex = re.compile('(?<=@)(\\S+$)')
-            mail_domain = regex.findall(mailbox_email)[0]
-            mail_vendor = mail_domain.split('.')[0]
-            parts = mail_domain.split('.')
-            if len(parts) > 2:
-                mail_vendor = '.'.join(parts[:-1])
-            elif len(parts) == 2:
-                mail_vendor = parts[0]
-            else:
-                mail_vendor = mail_domain
-            imap_server = var.mail_server[mail_vendor]['imap']['server']
-            imap_port = var.mail_server[mail_vendor]['imap']['port']
+            imap_config = var.get_mail_server_config(mailbox_email)['imap']
+            imap_server = imap_config['server']
+            imap_port = imap_config['port']
 
-            if user.get('PROXY:PORT') and user.get('PROXY:PORT') != ' ':
-                proxy_host = user['PROXY:PORT'].split(':')[0]
-                proxy_port = int(user['PROXY:PORT'].split(':')[1])
+            proxy_host, proxy_port = var.parse_proxy_port(
+                user.get('PROXY:PORT'))
+            if proxy_host:
                 imap_conn = proxy_imaplib.IMAP(
                     proxy_host=proxy_host,
                     proxy_port=proxy_port,
@@ -348,12 +338,8 @@ class AsyncReplyManager:
             FIRSTFROMNAME = user['FIRSTFROMNAME']
             LASTFROMNAME = user['LASTFROMNAME']
 
-            if user['PROXY:PORT'] != ' ':
-                proxy_host = user['PROXY:PORT'].split(':')[0]
-                proxy_port = int(user['PROXY:PORT'].split(':')[1])
-            else:
-                proxy_host = ''
-                proxy_port = ''
+            proxy_host, proxy_port = var.parse_proxy_port(
+                user.get('PROXY:PORT'))
 
             # Create and start reply thread
             reply_thread = Reply_SMTP(
