@@ -78,23 +78,41 @@ class IMAP_(threading.Thread):
         self.logger = logger
         try:
             self.mail_vendor = var.resolve_mail_vendor(self.imap_user)
-            imap_config = var.mail_server[self.mail_vendor]['imap']
+            provider_config = var.mail_server[self.mail_vendor]
+            imap_config = provider_config['imap']
             self.imap_server = imap_config['server']
             self.imap_port = imap_config['port']
+            self.proxy_fallback_direct = bool(
+                provider_config.get('proxy_fallback_direct', False))
         except:
             logger.error(f'ImapBase error: {traceback.format_exc()}')
             raise
 
+    def _login(self, use_proxy):
+        if use_proxy:
+            imap = proxy_imaplib.IMAP(proxy_host=self.proxy_host, proxy_port=self.proxy_port, proxy_type=self.proxy_type, proxy_user=self.proxy_user, proxy_pass=self.proxy_pass, host=self.imap_server, port=self.imap_port, timeout=30)
+        else:
+            imap = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
+        imap.login(self.imap_user, self.imap_pass)
+        return imap
+
     def run(self):
         global total_email_moved
         global total_email_to_be_replied
+        imap = None
         try:
             var.thread_open += 1
-            if self.proxy_host != '':
-                imap = proxy_imaplib.IMAP(proxy_host=self.proxy_host, proxy_port=self.proxy_port, proxy_type=self.proxy_type, proxy_user=self.proxy_user, proxy_pass=self.proxy_pass, host=self.imap_server, port=self.imap_port, timeout=30)
-            else:
-                imap = imaplib.IMAP4_SSL(self.imap_server)
-            imap.login(self.imap_user, self.imap_pass)
+            try:
+                imap = self._login(self.proxy_host != '')
+            except Exception as e:
+                if self.proxy_host != '' and self.proxy_fallback_direct:
+                    self.logger.warning(
+                        'IMAP proxy failed for %s, retrying direct: %s',
+                        self.imap_user, e
+                    )
+                    imap = self._login(False)
+                else:
+                    raise
             for item in self.targets:
                 if var.cancel:
                     break
@@ -150,8 +168,9 @@ class IMAP_(threading.Thread):
                     # else:
                     #     error_list.put('Error at email collecting base - {} - {}'.format(self.imap_user, e))
                         # status_print(print_text=text, textbrowser=[text, False])
-            imap.close()
-            imap.logout()
+            if imap is not None:
+                imap.close()
+                imap.logout()
         except Exception as e:
             text = 'Error at email collecting final - {} - {}'.format(self.name, e)
             # self.logger.error(text)

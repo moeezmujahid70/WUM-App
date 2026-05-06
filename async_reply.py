@@ -193,27 +193,39 @@ class AsyncReplyManager:
             mailbox_email = user['EMAIL']
             mailbox_pass = user['EMAIL_PASS']
 
-            imap_config = var.get_mail_server_config(mailbox_email)['imap']
+            provider_config = var.get_mail_server_config(mailbox_email)
+            imap_config = provider_config['imap']
             imap_server = imap_config['server']
             imap_port = imap_config['port']
+            proxy_fallback_direct = bool(
+                provider_config.get('proxy_fallback_direct', False))
 
             proxy_host, proxy_port = var.parse_proxy_port(
                 user.get('PROXY:PORT'))
-            if proxy_host:
-                imap_conn = proxy_imaplib.IMAP(
-                    proxy_host=proxy_host,
-                    proxy_port=proxy_port,
-                    proxy_type=socks.PROXY_TYPE_SOCKS5,
-                    proxy_user=user.get('PROXY_USER', ''),
-                    proxy_pass=user.get('PROXY_PASS', ''),
-                    host=imap_server,
-                    port=imap_port,
-                    timeout=30
-                )
-            else:
+            try:
+                if proxy_host:
+                    imap_conn = proxy_imaplib.IMAP(
+                        proxy_host=proxy_host,
+                        proxy_port=proxy_port,
+                        proxy_type=socks.PROXY_TYPE_SOCKS5,
+                        proxy_user=user.get('PROXY_USER', ''),
+                        proxy_pass=user.get('PROXY_PASS', ''),
+                        host=imap_server,
+                        port=imap_port,
+                        timeout=30
+                    )
+                else:
+                    imap_conn = imaplib.IMAP4_SSL(imap_server, imap_port)
+                imap_conn.login(mailbox_email, mailbox_pass)
+            except Exception:
+                if not proxy_host or not proxy_fallback_direct:
+                    raise
+                try:
+                    imap_conn.logout()
+                except Exception:
+                    pass
                 imap_conn = imaplib.IMAP4_SSL(imap_server, imap_port)
-
-            imap_conn.login(mailbox_email, mailbox_pass)
+                imap_conn.login(mailbox_email, mailbox_pass)
             imap_conn.select('INBOX')
 
             # status, data = imap_conn.search(None, 'UNSEEN')

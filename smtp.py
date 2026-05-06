@@ -352,13 +352,16 @@ class SMTP_(threading.Thread):
                 var.data['config']['mail_server'] = var.mail_server
                 with open(os.path.join(var.gmonster_base_dir, 'gmonster_config.json'), 'w', encoding='utf-8') as json_file:
                     json.dump(var.data, json_file, indent=4)
-            smtp_config = var.mail_server[mail_vendor]['smtp']
+            provider_config = var.mail_server[mail_vendor]
+            smtp_config = provider_config['smtp']
             self.smtp_server = smtp_config['server']
             self.smtp_port = smtp_config['port']
             require_ssl = smtp_config.get('require_ssl', False)
             if isinstance(require_ssl, str):
                 require_ssl = require_ssl.strip().lower() == 'true'
             self.smtp_require_ssl = bool(require_ssl)
+            self.proxy_fallback_direct = bool(
+                provider_config.get('proxy_fallback_direct', False))
         except:
             logger.error(f'SmtpBase error: {traceback.format_exc()}')
             raise
@@ -382,45 +385,59 @@ class SMTP_(threading.Thread):
         return _normalize_subject(subject_text, allow_reply_prefix=False), body_text
 
     def login(self):
-        for count in range(0, 3):
-            try:
-                if self.proxy_host != '':
-                    proxifier = Proxifier(
-                        self.proxy_host, int(self.proxy_port), 'SOCKS5',
-                        self.proxy_user, self.proxy_pass
-                    )
-                    if self.smtp_require_ssl:
-                        server = SmtpProxySSL(
-                            self.smtp_server, self.smtp_port, timeout=30,
-                            proxifier=proxifier
+        use_proxy_options = [self.proxy_host != '']
+        if self.proxy_host != '' and self.proxy_fallback_direct:
+            use_proxy_options.append(False)
+        last_error = None
+        for use_proxy in use_proxy_options:
+            max_attempts = 1 if use_proxy and self.proxy_fallback_direct else 3
+            for count in range(0, max_attempts):
+                try:
+                    if use_proxy:
+                        proxifier = Proxifier(
+                            self.proxy_host, int(self.proxy_port), 'SOCKS5',
+                            self.proxy_user, self.proxy_pass
                         )
+                        if self.smtp_require_ssl:
+                            server = SmtpProxySSL(
+                                self.smtp_server, self.smtp_port, timeout=30,
+                                proxifier=proxifier
+                            )
+                        else:
+                            server = SmtpProxy(
+                                self.smtp_server, self.smtp_port, timeout=30,
+                                proxifier=proxifier
+                            )
+                        server.set_debuglevel(0)
                     else:
-                        server = SmtpProxy(
-                            self.smtp_server, self.smtp_port, timeout=30,
-                            proxifier=proxifier
-                        )
-                    server.set_debuglevel(0)
-                else:
-                    if self.smtp_require_ssl:
-                        server = smtplib.SMTP_SSL(
-                            self.smtp_server, self.smtp_port, timeout=30)
-                    else:
-                        server = smtplib.SMTP(
-                            self.smtp_server, self.smtp_port, timeout=30)
-                    server.set_debuglevel(0)
-                server.ehlo()
-                if not self.smtp_require_ssl:
-                    server.starttls()
+                        if self.smtp_require_ssl:
+                            server = smtplib.SMTP_SSL(
+                                self.smtp_server, self.smtp_port, timeout=30)
+                        else:
+                            server = smtplib.SMTP(
+                                self.smtp_server, self.smtp_port, timeout=30)
+                        server.set_debuglevel(0)
                     server.ehlo()
-                server.login(self.user, self.password)
-                break
-            except Exception as e:
-                if count <= 1:
-                    if _sleep_with_cancel(50):
-                        return None
-                    continue
-                raise
-        return server
+                    if not self.smtp_require_ssl:
+                        server.starttls()
+                        server.ehlo()
+                    server.login(self.user, self.password)
+                    return server
+                except Exception as e:
+                    last_error = e
+                    if count <= max_attempts - 2:
+                        if _sleep_with_cancel(50):
+                            return None
+                        continue
+                    if use_proxy and self.proxy_fallback_direct:
+                        self.logger.warning(
+                            'SMTP proxy failed for %s, retrying direct: %s',
+                            self.user, e
+                        )
+                    break
+        if last_error:
+            raise last_error
+        return None
 
     def run(self):
         global total_email_sent_count

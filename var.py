@@ -301,7 +301,7 @@ DEFAULT_MAIL_SERVER = {
             "port": 587,
             "require_ssl": False
         },
-        "sent_folder": "\"[Gmail]/Sent Mail\""
+        "sent_folder": "[Gmail]/Sent Mail"
     },
     "outlook": {
         "imap": {
@@ -325,7 +325,8 @@ DEFAULT_MAIL_SERVER = {
             "port": 587,
             "require_ssl": False
         },
-        "sent_folder": "Sent"
+        "sent_folder": "Sent",
+        "proxy_fallback_direct": True
     },
     "yahoo": {
         "imap": {
@@ -337,7 +338,8 @@ DEFAULT_MAIL_SERVER = {
             "port": 465,
             "require_ssl": True
         },
-        "sent_folder": "Sent"
+        "sent_folder": "Sent",
+        "proxy_fallback_direct": True
     },
     "mail": {
         "imap": {
@@ -349,7 +351,21 @@ DEFAULT_MAIL_SERVER = {
             "port": 465,
             "require_ssl": True
         },
-        "sent_folder": "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-"
+        "sent_folder": "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-",
+        "proxy_fallback_direct": True
+    },
+    "aol": {
+        "imap": {
+            "server": "imap.aol.com",
+            "port": 993
+        },
+        "smtp": {
+            "server": "smtp.aol.com",
+            "port": 465,
+            "require_ssl": True
+        },
+        "sent_folder": "Sent",
+        "proxy_fallback_direct": True
     }
 }
 mail_server = DEFAULT_MAIL_SERVER.copy()
