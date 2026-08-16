@@ -25,6 +25,8 @@ datas = []
 datas += _safe_copy_metadata('apscheduler', recursive=True)
 datas += _safe_collect_data_files('textblob.en')
 datas += _safe_collect_data_files('tzdata')
+if os.path.isfile(certifi.where()):
+    datas += [(certifi.where(), 'default-data')]
 
 block_cipher = None
 
@@ -44,8 +46,6 @@ a = Analysis(['var.py'],
 
 if os.path.isdir(icons_path):
     a.datas += Tree(icons_path, prefix='icons')
-if os.path.isfile(certifi.where()):
-    a.datas += [(certifi.where(), 'default-data')]
 
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
