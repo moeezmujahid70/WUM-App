@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import copy_metadata, collect_data_files
+import certifi
 import os
 
 _spec_file = globals().get('__file__')
@@ -43,6 +44,8 @@ a = Analysis(['var.py'],
 
 if os.path.isdir(icons_path):
     a.datas += Tree(icons_path, prefix='icons')
+if os.path.isfile(certifi.where()):
+    a.datas += [(certifi.where(), 'default-data')]
 
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)

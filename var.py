@@ -10,14 +10,37 @@ import threading
 import sys
 import os
 import re
+import shutil
+from pathlib import Path
 from json import load, dumps
 from compat_ui import alert, password, confirm
+from runtime_paths import initialize_runtime_data, resolve_runtime_paths
 global compose_email_body
 global next_phase_in
 global compose_email_subject
 global session_track
 global has_cache
 global phase_completed
+
+
+RUNTIME_PATHS = resolve_runtime_paths(
+    frozen=bool(getattr(sys, "frozen", False)),
+    platform_name=sys.platform,
+    executable=sys.executable,
+    working_dir=os.getcwd(),
+    local_app_data=os.environ.get(
+        "LOCALAPPDATA", os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    ),
+)
+initialize_runtime_data(RUNTIME_PATHS.data_dir)
+if getattr(sys, "frozen", False):
+    bundled_certificate = Path(sys._MEIPASS) / "default-data" / "cacert.pem"
+    installed_certificate = RUNTIME_PATHS.data_dir / "gmonster_config" / "cacert.pem"
+    if bundled_certificate.is_file() and not installed_certificate.exists():
+        shutil.copy2(bundled_certificate, installed_certificate)
+
+if "--smoke-test" in sys.argv:
+    raise SystemExit(0)
 
 try:
     import fcntl as _fcntl
@@ -33,7 +56,7 @@ except ImportError:
 def override_where():
     """ overrides certifi.core.where to return actual location of cacert.pem"""
     # change this to match the location of cacert.pem
-    return os.path.abspath(os.path.join(os.getcwd(), "data", "gmonster_config", "cacert.pem"))
+    return str(RUNTIME_PATHS.data_dir / "gmonster_config" / "cacert.pem")
 
 
 # is the program compiled?
@@ -108,11 +131,11 @@ class SingleInstance:
 
 
 version = '2.2r'
-logs_dir = os.path.join('data', 'logs', 'wum')
-db_base_dir = os.path.join('data', 'gmonster_config')
-gmonster_base_dir = os.path.join('data', 'gmonster_config')
-sheets_base_dir = os.path.join('data', 'sheets')
-config_base_dir = os.path.join('data', 'wum_config')
+logs_dir = str(RUNTIME_PATHS.data_dir / 'logs' / 'wum')
+db_base_dir = str(RUNTIME_PATHS.data_dir / 'gmonster_config')
+gmonster_base_dir = str(RUNTIME_PATHS.data_dir / 'gmonster_config')
+sheets_base_dir = str(RUNTIME_PATHS.data_dir / 'sheets')
+config_base_dir = str(RUNTIME_PATHS.data_dir / 'wum_config')
 cancel = False
 thread_open = 0
 imap_server = 'imap.gmail.com'
