@@ -6,6 +6,7 @@ import os
 _spec_file = globals().get('__file__')
 spec_dir = os.path.abspath(os.path.dirname(_spec_file)) if _spec_file else os.path.abspath(os.getcwd())
 icons_path = os.path.join(spec_dir, 'icons')
+wum_defaults_path = os.path.join(spec_dir, 'wum_defaults')
 
 
 def _safe_copy_metadata(package_name, recursive=False):
@@ -46,6 +47,8 @@ a = Analysis(['var.py'],
 
 if os.path.isdir(icons_path):
     a.datas += Tree(icons_path, prefix='icons')
+if os.path.isdir(wum_defaults_path):
+    a.datas += Tree(wum_defaults_path, prefix='wum_defaults')
 
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
