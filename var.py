@@ -14,7 +14,11 @@ import shutil
 from pathlib import Path
 from json import load, dumps
 from compat_ui import alert, password, confirm
-from runtime_paths import initialize_runtime_data, resolve_runtime_paths
+from runtime_paths import (
+    initialize_runtime_data,
+    resolve_runtime_paths,
+    resolve_wum_api_base,
+)
 global compose_email_body
 global next_phase_in
 global compose_email_subject
@@ -170,7 +174,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 logging.getLogger('requests').setLevel(logging.WARNING)
-api = ''
+api = resolve_wum_api_base(RUNTIME_PATHS.data_dir)
 # api = "http://127.0.0.1:5000/"
 sign_up_label = ''
 sign_in_label = ''

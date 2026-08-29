@@ -19,6 +19,7 @@ from time import sleep
 from threading import Lock, Thread
 import json
 from compat_ui import alert, password, confirm
+from runtime_paths import open_sheets_folder as open_runtime_sheets_folder
 import datetime
 global app
 global GUI
@@ -84,6 +85,8 @@ class Main:
         GUI.cancelButton.clicked.connect(self.cancel)
         GUI.startButton.clicked.connect(self.start)
         GUI.pushButton_update_config.clicked.connect(self.update)
+        GUI.pushButton_open_sheets_folder.clicked.connect(
+            self.open_sheets_folder)
         layout = QVBoxLayout()
         GUI.progress_bar = CircularProgress(phase=0)
         GUI.progress_bar.setObjectName('progress_bar')
@@ -167,6 +170,22 @@ class Main:
         var.compose_email_subject = GUI.lineEdit_subject.text().strip()
         var.compose_email_body = GUI.textBrowser_body.toPlainText().strip()
         Thread(target=var.compose_saving, daemon=True).start()
+
+    def open_sheets_folder(self):
+        try:
+            open_runtime_sheets_folder(
+                var.RUNTIME_PATHS.data_dir,
+                lambda sheets_dir: QtGui.QDesktopServices.openUrl(
+                    QtCore.QUrl.fromLocalFile(str(sheets_dir))
+                ),
+            )
+        except OSError as error:
+            self.logger.error("Could not open sheets folder: %s", error)
+            alert(
+                text="Could not open the sheets folder.",
+                title="Sheets folder",
+                button="OK",
+            )
 
     def update_report(self, text, flag):
         if flag:

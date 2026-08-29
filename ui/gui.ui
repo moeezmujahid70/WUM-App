@@ -730,7 +730,7 @@ QPushButton:pressed {
         <string notr="true">background-color: #fff;
 </string>
        </property>
-     <layout class="QGridLayout" name="gridLayout_3" rowstretch="0,0,0,0,1,0,0">
+     <layout class="QGridLayout" name="gridLayout_3" rowstretch="0,0,0,0,1,0,0,0">
         <property name="leftMargin">
          <number>20</number>
         </property>
@@ -898,6 +898,34 @@ p, li { white-space: pre-wrap; }
          </spacer>
         </item>
                 <item row="6" column="0" alignment="Qt::AlignHCenter">
+                 <widget class="QPushButton" name="pushButton_open_sheets_folder">
+          <property name="font">
+           <font>
+            <family>Arial</family>
+            <pointsize>12</pointsize>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QPushButton {
+    border: 1px solid #028fc3;
+    border-radius: 3px;
+    background: #ffffff;
+    padding: 5px 28px;
+    color: #028fc3;
+    }
+QPushButton:hover {
+    background: #e6f5fa;
+    }
+QPushButton:pressed {
+    background: #d2ecf5;
+    }</string>
+          </property>
+          <property name="text">
+           <string>Open Sheets Folder</string>
+          </property>
+                 </widget>
+                </item>
+                <item row="7" column="0" alignment="Qt::AlignHCenter">
                  <widget class="QPushButton" name="pushButton_update_config">
           <property name="font">
            <font>
