@@ -1,7 +1,13 @@
 """Runtime path resolution for development and installed WUM builds."""
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
+import shutil
+from typing import Callable
+
+
+DEFAULT_WUM_API_BASE = "https://dev-enzim.pythonanywhere.com/"
 
 
 @dataclass(frozen=True)
@@ -16,6 +22,16 @@ RUNTIME_DATA_DIRECTORIES = (
     "wum_config",
     "sheets",
     "logs/wum",
+)
+
+WUM_DEFAULT_FILENAMES = (
+    "config.json",
+    "PROMPT1.txt",
+    "PROMPT2.txt",
+    "EMAIL1.txt",
+    "EMAIL2.txt",
+    "subject.txt",
+    "body.txt",
 )
 
 
@@ -43,3 +59,39 @@ def initialize_runtime_data(data_dir: str | Path) -> None:
     root = Path(data_dir)
     for relative_dir in RUNTIME_DATA_DIRECTORIES:
         (root / relative_dir).mkdir(parents=True, exist_ok=True)
+
+
+def initialize_wum_defaults(data_dir: str | Path, defaults_dir: str | Path) -> None:
+    """Seed safe WUM starter files while preserving every customer file."""
+    source_dir = Path(defaults_dir) / "wum_config"
+    target_dir = Path(data_dir) / "wum_config"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    for filename in WUM_DEFAULT_FILENAMES:
+        source = source_dir / filename
+        target = target_dir / filename
+        if source.is_file() and not target.exists():
+            shutil.copy2(source, target)
+
+
+def resolve_wum_api_base(data_dir: str | Path) -> str:
+    """Use GMonster's shared API setting, with a safe first-run fallback."""
+    config_path = Path(data_dir) / "gmonster_config" / "config.json"
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+        api_base = str(payload.get("config", {}).get("api", "")).strip()
+    except (OSError, ValueError, TypeError):
+        api_base = ""
+
+    api_base = api_base or DEFAULT_WUM_API_BASE
+    return api_base if api_base.endswith("/") else api_base + "/"
+
+
+def open_sheets_folder(
+    data_dir: str | Path, open_directory: Callable[[Path], None]
+) -> Path:
+    """Ensure the shared sheets directory exists and open it."""
+    sheets_dir = Path(data_dir) / "sheets"
+    sheets_dir.mkdir(parents=True, exist_ok=True)
+    open_directory(sheets_dir)
+    return sheets_dir

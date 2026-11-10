@@ -510,6 +510,26 @@ class Ui_MainWindow(object):
         self.gridLayout_3.addWidget(self.textBrowser_body, 4, 0, 1, 1)
         spacerItem7 = QtWidgets.QSpacerItem(20, 10, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.gridLayout_3.addItem(spacerItem7, 5, 0, 1, 1)
+        self.pushButton_open_sheets_folder = QtWidgets.QPushButton(self.stackedWidgetPage2)
+        font = QtGui.QFont()
+        font.setFamily("Arial")
+        font.setPointSize(12)
+        self.pushButton_open_sheets_folder.setFont(font)
+        self.pushButton_open_sheets_folder.setStyleSheet("QPushButton {\n"
+"    border: 1px solid #028fc3;\n"
+"    border-radius: 3px;\n"
+"    background: #ffffff;\n"
+"    padding: 5px 28px;\n"
+"    color: #028fc3;\n"
+"    }\n"
+"QPushButton:hover {\n"
+"    background: #e6f5fa;\n"
+"    }\n"
+"QPushButton:pressed {\n"
+"    background: #d2ecf5;\n"
+"    }")
+        self.pushButton_open_sheets_folder.setObjectName("pushButton_open_sheets_folder")
+        self.gridLayout_3.addWidget(self.pushButton_open_sheets_folder, 6, 0, 1, 1, QtCore.Qt.AlignHCenter)
         self.pushButton_update_config = QtWidgets.QPushButton(self.stackedWidgetPage2)
         font = QtGui.QFont()
         font.setFamily("Arial")
@@ -534,7 +554,7 @@ class Ui_MainWindow(object):
 "    background: rgb(0, 138, 191);\n"
 "    }")
         self.pushButton_update_config.setObjectName("pushButton_update_config")
-        self.gridLayout_3.addWidget(self.pushButton_update_config, 6, 0, 1, 1, QtCore.Qt.AlignHCenter)
+        self.gridLayout_3.addWidget(self.pushButton_update_config, 7, 0, 1, 1, QtCore.Qt.AlignHCenter)
         self.gridLayout_3.setRowStretch(4, 1)
         self.stackedWidget.addWidget(self.stackedWidgetPage2)
         self.stackedWidgetPage3 = QtWidgets.QWidget()
@@ -591,5 +611,6 @@ class Ui_MainWindow(object):
         self.startButton.setText(_translate("MainWindow", "Start"))
         self.cancelButton.setText(_translate("MainWindow", "Cancel"))
         self.lineEdit_subject.setText(_translate("MainWindow", "Just a friendly outreach about [3]"))
+        self.pushButton_open_sheets_folder.setText(_translate("MainWindow", "Open Sheets Folder"))
         self.pushButton_update_config.setText(_translate("MainWindow", "Update"))
 import logo_rc

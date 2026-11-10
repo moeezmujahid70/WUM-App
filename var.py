@@ -14,7 +14,12 @@ import shutil
 from pathlib import Path
 from json import load, dumps
 from compat_ui import alert, password, confirm
-from runtime_paths import initialize_runtime_data, resolve_runtime_paths
+from runtime_paths import (
+    initialize_runtime_data,
+    initialize_wum_defaults,
+    resolve_runtime_paths,
+    resolve_wum_api_base,
+)
 global compose_email_body
 global next_phase_in
 global compose_email_subject
@@ -33,6 +38,10 @@ RUNTIME_PATHS = resolve_runtime_paths(
     ),
 )
 initialize_runtime_data(RUNTIME_PATHS.data_dir)
+default_resources_dir = Path(
+    getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)
+)
+initialize_wum_defaults(RUNTIME_PATHS.data_dir, default_resources_dir / "wum_defaults")
 if getattr(sys, "frozen", False):
     bundled_certificate = Path(sys._MEIPASS) / "default-data" / "cacert.pem"
     installed_certificate = RUNTIME_PATHS.data_dir / "gmonster_config" / "cacert.pem"
@@ -170,7 +179,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 logging.getLogger('requests').setLevel(logging.WARNING)
-api = ''
+api = resolve_wum_api_base(RUNTIME_PATHS.data_dir)
 # api = "http://127.0.0.1:5000/"
 sign_up_label = ''
 sign_in_label = ''

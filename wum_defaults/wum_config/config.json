@@ -1,0 +1,26 @@
+{
+  "config": {
+    "api": "https://dev-enzim.pythonanywhere.com/",
+    "limit_of_thread": 100,
+    "login_email": "",
+    "proxy_on": false,
+    "openai_api_key": "",
+    "openai_model": "gpt-4o-mini",
+    "openai_base_url": "https://api.openai.com/v1",
+    "openai_timeout": 45,
+    "ai_prompt_path": "PROMPT1.txt",
+    "ai_email_template_path": "EMAIL1.txt",
+    "ai_reply_prompt_path": "PROMPT2.txt",
+    "ai_reply_email_template_path": "EMAIL2.txt",
+    "mail_server": {}
+  },
+  "settings": {
+    "1": {"number_of_emails": "1-1", "delay_start": 20, "delay_end": 30, "wait_period": 0.3333},
+    "2": {"number_of_emails": "1-1", "delay_start": 20, "delay_end": 20, "wait_period": 2},
+    "3": {"number_of_emails": "1-1", "delay_start": 200, "delay_end": 300, "wait_period": 1},
+    "4": {"number_of_emails": "1-3", "delay_start": 500, "delay_end": 1000, "wait_period": 4},
+    "5": {"number_of_emails": "1-3", "delay_start": 2000, "delay_end": 2800, "wait_period": 2},
+    "6": {"number_of_emails": "1-3", "delay_start": 2000, "delay_end": 2200, "wait_period": 2},
+    "7": {"number_of_emails": "1-3", "delay_start": 1550, "delay_end": 1700, "wait_period": 24}
+  }
+}
