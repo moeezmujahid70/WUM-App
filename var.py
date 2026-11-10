@@ -139,7 +139,7 @@ class SingleInstance:
                     pass
 
 
-version = '2.2r'
+version = '3.0.1'
 logs_dir = str(RUNTIME_PATHS.data_dir / 'logs' / 'wum')
 db_base_dir = str(RUNTIME_PATHS.data_dir / 'gmonster_config')
 gmonster_base_dir = str(RUNTIME_PATHS.data_dir / 'gmonster_config')
