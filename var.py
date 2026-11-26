@@ -139,7 +139,10 @@ class SingleInstance:
                     pass
 
 
-version = '3.0.1'
+# WUM's own release, checked by verify/wum_version (the WUM record on the server).
+version = '1.1r'
+# GMonster release that verify/login (type "main") requires; both ship in one installer.
+login_version = '3.0.1'
 logs_dir = str(RUNTIME_PATHS.data_dir / 'logs' / 'wum')
 db_base_dir = str(RUNTIME_PATHS.data_dir / 'gmonster_config')
 gmonster_base_dir = str(RUNTIME_PATHS.data_dir / 'gmonster_config')
@@ -198,6 +201,10 @@ ai_reply_prompt_path = os.path.join(config_base_dir, 'PROMPT2.txt')
 ai_reply_email_template_path = os.path.join(config_base_dir, 'EMAIL2.txt')
 limit_of_thread = 100
 login_email = ''
+# Session-only sign-in details, used for server AI requests; never saved to config.
+login_password = ''
+login_machine_uuid = ''
+login_processor_id = ''
 gmonster_desktop_id = '6296d839-9b35-4c12-830a-6c871affc3e2'
 has_cache = False
 cache_choice_made = False

@@ -26,6 +26,7 @@ from email import encoders
 from pathlib import Path
 import os
 import server_client
+import ai_client
 import async_reply
 
 global logger
@@ -141,44 +142,10 @@ def _render_reply_prompt(incoming_email, first_name, last_name, to_name):
 
 
 def _call_openai(prompt_text, system_prompt=None):
-    api_key = getattr(var, 'openai_api_key', '')
-    if not api_key:
-        raise RuntimeError(
-            'OpenAI API key is missing. Set OPENAI_API_KEY or update config.')
-    base_url = getattr(var, 'openai_base_url',
-                       'https://api.openai.com/v1').rstrip('/')
-    model = getattr(var, 'openai_model', 'gpt-4o-mini')
-    timeout = getattr(var, 'openai_timeout', 55.0)
-    url = f'{base_url}/chat/completions'
-    headers = {'Authorization': f'Bearer {api_key}',
-               'Content-Type': 'application/json'}
+    """Generate text via the user's own OpenAI key or, by default, the Gmonster server."""
     if not system_prompt:
         system_prompt = 'You craft outreach emails. Return ONLY two parts: the first line is the email subject and the remaining lines are the body. Do not add labels or numbering.'
-    payload = {
-        'model': model,
-        'temperature': 0.8,
-        'messages': [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': prompt_text}
-        ]
-    }
-    try:
-        response = requests.post(url, headers=headers,
-                                 json=payload, timeout=timeout)
-        response.raise_for_status()
-        data = response.json()
-        return data['choices'][0]['message']['content']
-    except requests.RequestException as exc:
-        status_code = getattr(
-            getattr(exc, 'response', None), 'status_code', None)
-        response_text = getattr(getattr(exc, 'response', None), 'text', '')
-        logger.warning('OpenAI request failed (status=%s): %s | response=%s',
-                       status_code, exc, (response_text or '')[:500])
-        raise
-    except (KeyError, IndexError, TypeError, ValueError) as exc:
-        logger.warning('OpenAI response parsing failed: %s',
-                       exc, exc_info=True)
-        raise RuntimeError('Unexpected response from OpenAI API')
+    return ai_client.generate_text(prompt_text, system_prompt)
 
 
 def _parse_openai_response(content, expect_subject=True):

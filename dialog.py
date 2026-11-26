@@ -220,7 +220,7 @@ def make_sign_up_requests(email, password, endpoint):
             'processor_id': processor_id,
             'email': email,
             'password': password,
-            'version': var.version,
+            'version': var.login_version,
             'type': 'main'
         }
 
@@ -241,6 +241,10 @@ def make_sign_up_requests(email, password, endpoint):
         if endpoint == 'register':
             var.sign_up_label = status
         else:
+            if status == 'Success':
+                var.login_password = password
+                var.login_machine_uuid = machine_uuid
+                var.login_processor_id = processor_id
             var.sign_in_label = status
     except Exception as e:
         print("Error at reading system info : {}".format(e))

@@ -3,15 +3,25 @@ import re
 import unittest
 
 
-class AppVersionTest(unittest.TestCase):
-    def test_wum_reports_the_same_version_as_the_gmonster_release(self):
-        # The login server requires an exact match with its latest version record
-        # (type "main"), and GMonster and WUM ship together in one installer.
-        source = Path("var.py").read_text(encoding="utf-8")
-        match = re.search(r"^version = '([^']+)'$", source, re.MULTILINE)
+def _assignment(name):
+    source = Path("var.py").read_text(encoding="utf-8")
+    match = re.search(r"^{} = '([^']+)'$".format(name), source, re.MULTILINE)
+    return match.group(1) if match else None
 
-        self.assertIsNotNone(match)
-        self.assertEqual(match.group(1), "3.0.1")
+
+class AppVersionTest(unittest.TestCase):
+    def test_wum_update_check_uses_the_wum_release_version(self):
+        # verify/wum_version compares against the WUM record on the server.
+        self.assertEqual(_assignment("version"), "1.1r")
+
+    def test_login_uses_the_gmonster_release_version(self):
+        # verify/login (type "main") requires the GMonster version, since
+        # GMonster and WUM ship together in one installer.
+        self.assertEqual(_assignment("login_version"), "3.0.1")
+
+    def test_login_request_sends_login_version(self):
+        source = Path("dialog.py").read_text(encoding="utf-8")
+        self.assertIn("'version': var.login_version", source)
 
 
 if __name__ == "__main__":
