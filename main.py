@@ -21,6 +21,7 @@ import json
 from compat_ui import alert, password, confirm
 from runtime_paths import open_sheets_folder as open_runtime_sheets_folder
 import datetime
+import ai_notice
 global app
 global GUI
 global mainWindow
@@ -63,6 +64,7 @@ class MyGui(Ui_MainWindow, QtWidgets.QWidget):
 
 class Report(QObject):
     s = pyqtSignal(str, int)
+    ai_warning = pyqtSignal(str)
 
 
 class Main:
@@ -76,6 +78,7 @@ class Main:
         GUI.textBrowser_body.setText(var.compose_email_body)
         GUI.signal = Report()
         GUI.signal.s.connect(self.update_report)
+        GUI.signal.ai_warning.connect(self.show_ai_warning)
         GUI.model = StatusModel()
         GUI.statusView.setModel(GUI.model)
         for index in range(1, 8):
@@ -194,8 +197,22 @@ class Main:
             text = '<span style=" color: #ee9595;">%s</span>' % text
         GUI.textBrowser_report.append(text)
 
+    def show_ai_warning(self, message):
+        # Runs on the UI thread (queued signal). Non-modal so sending continues.
+        GUI.label_status.setText('AI not working - sending canned messages')
+        self.update_report(message.replace('\n\n', ' '), False)
+        box = QMessageBox(mainWindow)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle('AI mode not working')
+        box.setText(message)
+        box.setStandardButtons(QMessageBox.Ok)
+        box.setModal(False)
+        box.setAttribute(Qt.WA_DeleteOnClose)
+        box.show()
+
     def start(self):
         var.cancel = False
+        ai_notice.reset()
         var.cache_choice_made = False
         var.resume_cached_run = False
         var.load_cache()

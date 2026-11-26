@@ -27,6 +27,7 @@ from pathlib import Path
 import os
 import server_client
 import ai_client
+import ai_notice
 import async_reply
 
 global logger
@@ -345,6 +346,7 @@ class SMTP_(threading.Thread):
             except Exception as exc:
                 self.logger.error(
                     'AI email generation failed (%s -> %s): %s', self.user, recipient_email, exc)
+                ai_notice.report_fallback(exc, GUI.signal.ai_warning.emit)
         subject_text = utils.format_email(
             var.compose_email_subject, self.FIRSTFROMNAME, self.LASTFROMNAME, recipient_name)
         body_text = utils.format_email(
@@ -593,6 +595,7 @@ class Reply_SMTP(SMTP_):
                     except Exception as exc:
                         self.logger.error(
                             'AI reply generation failed (%s -> %s): %s', self.user, item.get('reciever'), exc)
+                        ai_notice.report_fallback(exc, GUI.signal.ai_warning.emit)
                 if not reply_body:
                     reply_body = utils.format_email(
                         var.compose_email_body, self.FIRSTFROMNAME, self.LASTFROMNAME, reciever['FIRSTFROMNAME'])
